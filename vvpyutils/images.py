@@ -45,7 +45,7 @@ def get_image_base64_encoded_url(
         mime_type = mime_type or "image/png"  # Defaulting to PNG if not provided
 
     data_url = f"data:{mime_type};base64,{encoded_image}"
-    logger.info(f"Generated data URL for {image_source}: {data_url}")
+    logger.info(f"Generated data URL for {image_source}: {data_url[:100]}...")
     return data_url
 
 
