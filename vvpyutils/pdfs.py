@@ -1,8 +1,12 @@
 import base64
-import pdf2image
+import io
 from pathlib import Path
-from typing import List
+from typing import List, Union
+
+import pdf2image
+
 from .config.logger import logger
+from .images import get_image_base64_encoded_url
 
 
 def base64_encode_pdf(pdf_path: Path) -> str:
@@ -34,24 +38,45 @@ def get_pdf_base64_encoded_url(pdf_path: str) -> str:
     return f"data:application/pdf;base64,{encoded_pdf}"
 
 
-def pdf_to_image(pdf_file: Path, output_path: Path) -> List[Path]:
+def pdf_pages_to_images(
+    pdf_file: Path, output_path: Path = None, return_as_data_url: bool = False
+) -> Union[List[Path], List[str]]:
     """
-    Converts a PDF file to a series of images and saves them to the specified output path.
+    Converts a PDF file to a series of images and optionally returns them as data URLs.
 
     Args:
         pdf_file (Path): The path to the PDF file to be converted.
-        output_path (Path): The directory where the resulting images will be saved.
+        output_path (Path, optional): The directory where the resulting images will be saved if not returning as data URLs.
+        return_as_data_url (bool): If True, return the images as base64-encoded data URLs.
 
     Returns:
-        List[Path]: A list of paths to the saved image files.
+        Union[List[Path], List[str]]: A list of paths to the saved image files or a list of data URLs.
+
+    Raises:
+        ValueError: If output_path is not specified when return_as_data_url is False.
     """
-    file_base = pdf_file.stem
+    IMAGE_FORMAT = "PNG"
+    MIME_TYPE = "image/png"
+
     images = pdf2image.convert_from_path(pdf_file)
 
+    if return_as_data_url:
+        data_urls = []
+        for image in images:
+            buffered = io.BytesIO()
+            image.save(buffered, format=IMAGE_FORMAT)
+            data_url = get_image_base64_encoded_url(buffered, mime_type=MIME_TYPE)
+            data_urls.append(data_url)
+        return data_urls
+
+    if output_path is None:
+        raise ValueError("output_path must be specified if not returning as data URLs")
+
+    file_base = pdf_file.stem
     image_paths = []
     for i, image in enumerate(images):
-        image_path = output_path / f"{file_base}-{i}.png"
-        image.save(image_path, "PNG")
+        image_path = output_path / f"{file_base}-{i}.{IMAGE_FORMAT.lower()}"
+        image.save(image_path, IMAGE_FORMAT)
         image_paths.append(image_path)
 
     return image_paths
