@@ -1,5 +1,5 @@
 [tool.poetry]
-name = "vv-py-utils"
+name = "vvpyutils"
 version = "0.1.0"
 description = ""
 authors = ["Vinoaj (Vinny) Vijeyakumaar <vinoaj@gmail.com>"]
