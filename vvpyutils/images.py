@@ -2,10 +2,8 @@ import base64
 import io
 from pathlib import Path
 from typing import Union
-from urllib.parse import urlparse
 
 from .config.logger import logger
-from .config.settings import VALID_IMAGE_EXTENSIONS
 from .files import get_file_type
 
 
@@ -47,30 +45,3 @@ def get_image_base64_encoded_url(
     data_url = f"data:{mime_type};base64,{encoded_image}"
     logger.info(f"Generated data URL for {image_source}: {data_url[:100]}...")
     return data_url
-
-
-def is_image_url(url: str) -> bool:
-    """
-    Checks if a given URL is both valid and points to an image file.
-
-    Args:
-        url (str): The URL to be checked.
-
-    Returns:
-        bool: True if the URL is valid and points to an image file, False otherwise.
-    """
-    if not url or not isinstance(url, str):
-        return False
-
-    try:
-        parsed = urlparse(url)
-        if parsed.scheme not in {"http", "https"}:
-            return False
-
-        if not parsed.netloc:
-            return False
-
-        return any(parsed.path.lower().endswith(ext) for ext in VALID_IMAGE_EXTENSIONS)
-
-    except Exception:
-        return False
