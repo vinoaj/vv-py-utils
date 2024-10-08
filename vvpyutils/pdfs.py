@@ -39,13 +39,15 @@ def get_pdf_base64_encoded_url(pdf_path: str) -> str:
 
 
 def pdf_pages_to_images(
-    pdf_file: Path, output_path: Path = None, return_as_data_url: bool = False
+    pdf_file: Union[Path, bytes],
+    output_path: Path = None,
+    return_as_data_url: bool = False,
 ) -> Union[List[Path], List[str]]:
     """
-    Converts a PDF file to a series of images and optionally returns them as data URLs.
+    Converts a PDF file (path or in-memory bytes) to a series of images and optionally returns them as data URLs.
 
     Args:
-        pdf_file (Path): The path to the PDF file to be converted.
+        pdf_file (Union[Path, bytes]): The path to the PDF file to be converted or the bytes content of a PDF.
         output_path (Path, optional): The directory where the resulting images will be saved if not returning as data URLs.
         return_as_data_url (bool): If True, return the images as base64-encoded data URLs.
 
@@ -58,7 +60,13 @@ def pdf_pages_to_images(
     IMAGE_FORMAT = "PNG"
     MIME_TYPE = "image/png"
 
-    images = pdf2image.convert_from_path(pdf_file)
+    # Determine the type of input and use the appropriate pdf2image function
+    if isinstance(pdf_file, Path):
+        images = pdf2image.convert_from_path(pdf_file)
+    elif isinstance(pdf_file, bytes):
+        images = pdf2image.convert_from_bytes(pdf_file)
+    else:
+        raise TypeError("pdf_file must be either a Path or bytes")
 
     if return_as_data_url:
         data_urls = []
@@ -72,7 +80,7 @@ def pdf_pages_to_images(
     if output_path is None:
         raise ValueError("output_path must be specified if not returning as data URLs")
 
-    file_base = pdf_file.stem
+    file_base = Path(pdf_file).stem if isinstance(pdf_file, Path) else "pdf_image"
     image_paths = []
     for i, image in enumerate(images):
         image_path = output_path / f"{file_base}-{i}.{IMAGE_FORMAT.lower()}"
