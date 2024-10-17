@@ -42,6 +42,7 @@ def pdf_pages_to_images(
     pdf_file: Union[Path, bytes],
     output_path: Path = None,
     return_as_data_url: bool = False,
+    size: int | tuple[int, int] = None,
 ) -> Union[List[Path], List[str]]:
     """
     Converts a PDF file (path or in-memory bytes) to a series of images and optionally returns them as data URLs.
@@ -60,11 +61,10 @@ def pdf_pages_to_images(
     IMAGE_FORMAT = "PNG"
     MIME_TYPE = "image/png"
 
-    # Determine the type of input and use the appropriate pdf2image function
     if isinstance(pdf_file, Path):
-        images = pdf2image.convert_from_path(pdf_file)
+        images = pdf2image.convert_from_path(pdf_file, size=size)
     elif isinstance(pdf_file, bytes):
-        images = pdf2image.convert_from_bytes(pdf_file)
+        images = pdf2image.convert_from_bytes(pdf_file, size=size)
     else:
         raise TypeError("pdf_file must be either a Path or bytes")
 
