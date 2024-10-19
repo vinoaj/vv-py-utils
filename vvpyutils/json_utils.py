@@ -14,6 +14,9 @@ def json_str_to_dict(json_str: str) -> dict:
     Raises:
         ValueError: If the JSON string is invalid.
     """
+
+    json_str = json_str.replace("\n", "").replace(" ", "")
+
     try:
         return json.loads(json_str)
     except json.JSONDecodeError as e:
