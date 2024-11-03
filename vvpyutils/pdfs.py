@@ -43,7 +43,7 @@ def base64_encode_pdf(
         raise TypeError("pdf_file must be either a Path or bytes")
 
     # If specific pages are specified, create a new PDF with only those pages
-    if pages:
+    if pages and len(pages) > 0:
         pdf_reader = PdfReader(io.BytesIO(pdf_data))
         pdf_writer = PdfWriter()
 
