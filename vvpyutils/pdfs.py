@@ -9,19 +9,38 @@ from .config.logger import logger
 from .images import get_image_base64_encoded_url
 
 
-def base64_encode_pdf(pdf_path: Path) -> str:
+def base64_encode_pdf(
+    pdf_file: Union[Path, bytes], return_as_data_url: bool = False
+) -> str:
     """
-    Encodes a PDF file to a base64 string.
+    Encodes a PDF file (path or in-memory bytes) to a base64 string or data URL.
 
     Args:
-        pdf_path (Path): The path to the PDF file to be encoded.
+        pdf_file (Union[Path, bytes]): The path to the PDF file or the bytes content of a PDF.
+        return_as_data_url (bool, optional): If True, returns the base64 encoded PDF as a data URL.
 
     Returns:
-        str: The base64 encoded string of the PDF file.
+        str: The base64 encoded string or data URL of the PDF file.
+
+    Raises:
+        TypeError: If pdf_file is not a Path or bytes.
     """
-    logger.info(f"Encoding PDF: {pdf_path}")
-    with open(pdf_path, "rb") as pdf_file:
-        return base64.b64encode(pdf_file.read()).decode("utf-8")
+    if isinstance(pdf_file, Path):
+        with open(pdf_file, "rb") as pdf_object:
+            pdf_data = pdf_object.read()
+    elif isinstance(pdf_file, bytes):
+        pdf_data = pdf_file
+    else:
+        raise TypeError("pdf_file must be either a Path or bytes")
+
+    # Encode the PDF data to base64
+    encoded_pdf = base64.b64encode(pdf_data).decode("utf-8")
+
+    # Return as data URL if specified
+    if return_as_data_url:
+        return f"data:application/pdf;base64,{encoded_pdf}"
+
+    return encoded_pdf
 
 
 def get_pdf_base64_encoded_url(pdf_path: str) -> str:
