@@ -48,7 +48,7 @@ def base64_encode_pdf(
         pdf_writer = PdfWriter()
 
         for page_number in pages:
-            if pdf_reader.pages[page_number]:
+            if 0 <= page_number < len(pdf_reader.pages):
                 pdf_writer.add_page(pdf_reader.pages[page_number])
 
         # Write the selected pages to a bytes buffer
