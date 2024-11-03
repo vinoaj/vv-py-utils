@@ -1,37 +1,60 @@
 import base64
 import io
 from pathlib import Path
-from typing import List, Union
+from typing import List, Optional, Union
 
 import pdf2image
+from pypdf import PdfReader, PdfWriter
 
 from .config.logger import logger
 from .images import get_image_base64_encoded_url
 
 
 def base64_encode_pdf(
-    pdf_file: Union[Path, bytes], return_as_data_url: bool = False
+    pdf_file: Path | bytes,
+    return_as_data_url: bool = False,
+    pages: Optional[list[int]] = None,
 ) -> str:
     """
-    Encodes a PDF file (path or in-memory bytes) to a base64 string or data URL.
+    Encodes specified pages of a PDF file (path or in-memory bytes) to a base64 string or data URL.
 
     Args:
         pdf_file (Union[Path, bytes]): The path to the PDF file or the bytes content of a PDF.
         return_as_data_url (bool, optional): If True, returns the base64 encoded PDF as a data URL.
+        pages (List[int], optional): A list of page numbers (0-indexed) to include in the encoding.
+                                     If empty, all pages are encoded.
 
     Returns:
-        str: The base64 encoded string or data URL of the PDF file.
+        str: The base64 encoded string or data URL of the selected PDF pages.
 
     Raises:
         TypeError: If pdf_file is not a Path or bytes.
     """
+    logger.info(
+        f"base64 encoding PDF: {type(pdf_file)} | {return_as_data_url=} | {pages=}"
+    )
+
+    # Load the PDF file as bytes
     if isinstance(pdf_file, Path):
-        with open(pdf_file, "rb") as pdf_object:
-            pdf_data = pdf_object.read()
+        pdf_data = pdf_file.read_bytes()
     elif isinstance(pdf_file, bytes):
         pdf_data = pdf_file
     else:
         raise TypeError("pdf_file must be either a Path or bytes")
+
+    # If specific pages are specified, create a new PDF with only those pages
+    if pages:
+        pdf_reader = PdfReader(io.BytesIO(pdf_data))
+        pdf_writer = PdfWriter()
+
+        for page_number in pages:
+            pdf_writer.add_page(pdf_reader.pages[page_number])
+
+        # Write the selected pages to a bytes buffer
+        buffer = io.BytesIO()
+        pdf_writer.write(buffer)
+        buffer.seek(0)
+        pdf_data = buffer.read()  # Update pdf_data to only include selected pages
 
     # Encode the PDF data to base64
     encoded_pdf = base64.b64encode(pdf_data).decode("utf-8")
@@ -46,6 +69,7 @@ def base64_encode_pdf(
 def get_pdf_base64_encoded_url(pdf_path: str) -> str:
     """
     Converts a PDF file to a base64 encoded data URL.
+    Retaining this function for backward compatibility purposes.
 
     Args:
         pdf_path (str): The file path to the PDF document.
@@ -53,8 +77,7 @@ def get_pdf_base64_encoded_url(pdf_path: str) -> str:
     Returns:
         str: A base64 encoded data URL representing the PDF document.
     """
-    encoded_pdf = base64_encode_pdf(pdf_path)
-    return f"data:application/pdf;base64,{encoded_pdf}"
+    return base64_encode_pdf(Path(pdf_path), return_as_data_url=True)
 
 
 def pdf_pages_to_images(
