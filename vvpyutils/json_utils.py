@@ -1,4 +1,5 @@
 import json
+from json_repair import repair_json
 
 
 def json_str_to_dict(json_str: str) -> dict:
@@ -21,3 +22,10 @@ def json_str_to_dict(json_str: str) -> dict:
         return json.loads(json_str)
     except json.JSONDecodeError as e:
         raise ValueError(f"Invalid JSON string: {e}") from None
+
+
+def extract_json_from_string(content: str) -> dict[str, any]:
+    try:
+        return json.loads(repair_json(content))
+    except json.JSONDecodeError:
+        raise ValueError("The JSON part of the message content is invalid JSON")
