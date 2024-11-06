@@ -11,6 +11,24 @@ from .config.logger import logger
 from .files import get_file_type
 
 
+def open_image(image_source: Union[Path, bytes, io.BytesIO]) -> Image.Image:
+    """
+    Opens an image from various input types (Path, bytes, io.BytesIO).
+
+    Args:
+        image_source (Union[Path, bytes, io.BytesIO]): The image source as a file path, bytes, or io.BytesIO.
+
+    Returns:
+        Image.Image: An opened PIL image.
+    """
+    if isinstance(image_source, Path):
+        image_source = io.BytesIO(image_source.read_bytes())
+    elif isinstance(image_source, bytes):
+        image_source = io.BytesIO(image_source)
+
+    return Image.open(image_source)
+
+
 def encode_image_base64(image_path: Path) -> str:
     """
     Encodes an image file to a base64 string.
@@ -45,8 +63,11 @@ def get_image_base64_encoded_url(
     elif isinstance(image_source, io.BytesIO):
         encoded_image = base64.b64encode(image_source.getvalue()).decode("utf-8")
         mime_type = mime_type or "image/png"  # Defaulting to PNG if not provided
-    else:
+    elif isinstance(image_source, bytes):
         encoded_image = base64.b64encode(image_source).decode("utf-8")
+        mime_type = mime_type or "image/png"
+    else:
+        raise TypeError("Invalid image source type")
 
     data_url = f"data:{mime_type};base64,{encoded_image}"
     logger.info(f"Generated data URL for {image_source}: {data_url[:100]}...")
@@ -92,3 +113,75 @@ def combine_images_vertically(
         return get_image_base64_encoded_url(buffer, "image/png")
     else:
         return new_image
+
+
+def resize_image(
+    image_source: Union[Path, bytes, io.BytesIO],
+    max_width: int = 512,
+    max_height: int = 512,
+    image_format: str = "webp",
+) -> bytes:
+    """
+    Resizes the image to fit within max_width and max_height, preserving aspect ratio.
+
+    Args:
+        image_source (Union[Path, bytes, io.BytesIO]): The path to the image file, bytes, or an in-memory image buffer.
+        max_width (int): Maximum width of the resized image.
+        max_height (int): Maximum height of the resized image.
+
+    Returns:
+        bytes: Resized image in bytes.
+    """
+
+    with open_image(image_source) as img:
+        img = open_image(image_source)
+        img.thumbnail((max_width, max_height))
+
+        buffer = io.BytesIO()
+        img.save(buffer, format=image_format)
+        return buffer.getvalue()
+
+
+def convert_to_webp(
+    image_source: Union[Path, bytes, io.BytesIO], quality: int = 80
+) -> bytes:
+    """
+    Converts an image to WebP format and returns it as bytes.
+
+    Args:
+        image_source (Union[Path, bytes, io.BytesIO]): The image source as a file path, bytes, or io.BytesIO.
+        quality (int): The quality of the WebP image (0-100).
+
+    Returns:
+        bytes: The image in WebP format as bytes.
+    """
+
+    with open_image(image_source) as img:
+        img = open_image(image_source)
+
+        # Convert the image to WebP format
+        buffer = io.BytesIO()
+        img.save(buffer, format="WEBP", quality=quality)  # Adjust quality as needed
+        return buffer.getvalue()
+
+
+def convert_to_grayscale(
+    image_source: Union[Path, bytes, io.BytesIO], image_format: str = "webp"
+) -> bytes:
+    """
+    Converts the image to grayscale and resizes it to fit within max_width and max_height, preserving aspect ratio.
+
+    Args:
+        image_source (Union[Path, bytes, io.BytesIO]): The path to the image file, bytes, or an in-memory image buffer.
+
+    Returns:
+        bytes: Grayscale image in bytes.
+    """
+
+    with open_image(image_source) as img:
+        img = open_image(image_source)
+        img = img.convert("L")  # Convert the image to grayscale
+
+        buffer = io.BytesIO()
+        img.save(buffer, format=image_format)
+        return buffer.getvalue()
