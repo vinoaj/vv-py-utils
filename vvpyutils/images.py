@@ -42,10 +42,11 @@ def get_image_base64_encoded_url(
     if isinstance(image_source, Path):
         encoded_image = encode_image_base64(image_source)
         mime_type = mime_type or get_file_type(image_source)
-    # elif isinstance(image_source, io.BytesIO):
-    else:
+    elif isinstance(image_source, io.BytesIO):
         encoded_image = base64.b64encode(image_source.getvalue()).decode("utf-8")
         mime_type = mime_type or "image/png"  # Defaulting to PNG if not provided
+    else:
+        encoded_image = base64.b64encode(image_source).decode("utf-8")
 
     data_url = f"data:{mime_type};base64,{encoded_image}"
     logger.info(f"Generated data URL for {image_source}: {data_url[:100]}...")
