@@ -18,7 +18,6 @@ def convert_date_str_to_YYYYMMDD(
         return None
     try:
         date_obj: list[tuple[str, datetime]] = search_dates(date_str, settings=settings)
-        print(type(date_obj), date_obj)
         formatted_date = date_obj[0][1].strftime("%Y-%m-%d")
         return formatted_date
     except (ValueError, AttributeError, TypeError) as e:
