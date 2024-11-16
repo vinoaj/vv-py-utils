@@ -12,6 +12,7 @@ pdf2image = "^1.17.0"
 pypdf = "^5.1.0"
 json-repair = "^0.30.0"
 docx2pdf = "^0.1.8"
+dateparser = "^1.2.0"
 
 
 [tool.poetry.group.dev.dependencies]
