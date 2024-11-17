@@ -3,7 +3,7 @@ import base64
 import io
 import pytest
 from pypdf import PdfReader
-from vvpyutils.pdfs import base64_encode_pdf
+from vvpyutils.pdfs import base64_encode_pdf, get_page_texts
 
 SAMPLE_PDFS_PATH = Path(__file__).parent / "pdf_samples"
 SAMPLE_PDFS = ["sample.pdf"]
@@ -95,3 +95,12 @@ def test_base64_encode_pdf_out_of_bounds(sample_pdf_bytes):
     decoded_pdf = base64.b64decode(encoded_pdf)
     pdf_reader = PdfReader(io.BytesIO(decoded_pdf))
     assert len(pdf_reader.pages) == 1
+
+
+def test_read_pages(sample_pdf_bytes):
+    page_texts = get_page_texts(sample_pdf_bytes)
+    print(page_texts)
+    assert isinstance(page_texts, list)
+    assert len(page_texts) == 1
+    assert isinstance(page_texts[0], str)
+    assert "Sample PDF" in page_texts[0]

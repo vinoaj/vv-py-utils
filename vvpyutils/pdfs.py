@@ -10,6 +10,57 @@ from .config.logger import logger
 from .images import get_image_base64_encoded_url
 
 
+def get_page_texts(
+    pdf_file: Path | bytes,
+    pages: Optional[list[int]] = None,
+    extraction_mode: str = "layout",  # "layout" or "plain"
+) -> list[str]:
+    """
+    Extracts text content from specified pages of a PDF file (path or in-memory bytes).
+
+    Args:
+        pdf_file (Union[Path, bytes]): The path to the PDF file or the bytes content of a PDF.
+        pages (List[int], optional): A list of page numbers (0-indexed) to extract text from.
+                                     If empty, text from all pages is extracted.
+
+    Returns:
+        List[str]: A list of text content from the selected PDF pages.
+
+    Raises:
+        TypeError: If pdf_file is not a Path or bytes.
+    """
+    logger.info(f"extracting text from PDF: {type(pdf_file)} | {pages=}")
+
+    # Load the PDF file as bytes
+    if isinstance(pdf_file, Path):
+        pdf_data = pdf_file.read_bytes()
+    elif isinstance(pdf_file, bytes):
+        pdf_data = pdf_file
+    else:
+        raise TypeError("pdf_file must be either a Path or bytes")
+
+    # If specific pages are specified, create a new PDF with only those pages
+    if pages and len(pages) > 0:
+        pdf_reader = PdfReader(io.BytesIO(pdf_data))
+        pdf_writer = PdfWriter()
+
+        for page_number in pages:
+            if 0 <= page_number < len(pdf_reader.pages):
+                pdf_writer.add_page(pdf_reader.pages[page_number])
+
+        # Write the selected pages to a bytes buffer
+        buffer = io.BytesIO()
+        pdf_writer.write(buffer)
+        buffer.seek(0)
+        pdf_data = buffer.read()  # Update pdf_data to only include selected pages
+
+    # Extract text content from the PDF data
+    pdf_reader = PdfReader(io.BytesIO(pdf_data))
+    return [
+        page.extract_text(extraction_mode=extraction_mode) for page in pdf_reader.pages
+    ]
+
+
 def base64_encode_pdf(
     pdf_file: Path | bytes,
     return_as_data_url: bool = False,
