@@ -187,3 +187,14 @@ def pdf_pages_to_images(
         image_paths.append(image_path)
 
     return image_paths
+
+
+def combine_pdfs(pdf_files: List[Path], output_file: Path) -> Path:
+    """Merge PDFs in order. First file will be front of file."""
+
+    merged_pdf = PdfWriter()
+    for pdf in pdf_files:
+        merged_pdf.append(pdf)
+
+    merged_pdf.write(output_file)
+    return output_file

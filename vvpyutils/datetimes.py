@@ -69,8 +69,7 @@ def convert_YYYY_MM_to_str(y: int, m: int, long_format: bool = False) -> str:
 
 
 def convert_time_str_to_hhmm(time_str: str) -> str:
-    """
-    Convert a time string to HHMM format.
+    """Convert a time string to HHMM format.
 
     Args:
         time_str (str): Input time string in any parseable format
