@@ -3,8 +3,7 @@ from pathlib import Path
 
 
 def get_file_type(file_path: Path) -> str:
-    """
-    Determines the MIME type of a given file.
+    """Determines the MIME type of a given file.
 
     Args:
         file_path (Path): The path to the file whose type is to be determined.
