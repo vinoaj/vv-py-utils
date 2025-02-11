@@ -3,6 +3,7 @@ from typing import Optional
 
 from dateparser.search import search_dates
 from dateutil.relativedelta import relativedelta
+from dateutil import parser
 
 dateparser_settings = {
     "RELATIVE_BASE": datetime.now(),  # Use current date as reference
@@ -15,6 +16,20 @@ dateparser_settings = {
 def convert_date_str_to_YYYYMMDD(
     date_str: str, settings: Optional[dict[str, str]] = dateparser_settings
 ) -> str | None:
+    """Convert a date string to YYYY-MM-DD format.
+
+    Args:
+        date_str (str): Input date string to convert
+        settings (Optional[dict[str, str]], optional): Custom dateparser settings.
+            Defaults to dateparser_settings.
+
+    Returns:
+        str | None: Formatted date string in YYYY-MM-DD format if successful, None if conversion fails
+
+    Example:
+        >>> convert_date_str_to_YYYYMMDD("January 1st 2023")
+        '2023-01-01'
+    """
     if date_str is None:
         return None
     try:
@@ -51,3 +66,22 @@ def convert_YYYY_MM_to_str(y: int, m: int, long_format: bool = False) -> str:
     date = datetime(year=y, month=1, day=1) + relativedelta(months=m - 1)
     date_str = date.strftime("%B %Y") if long_format else date.strftime("%b %Y")
     return date_str
+
+
+def convert_time_str_to_hhmm(time_str: str) -> str:
+    """
+    Convert a time string to HHMM format.
+
+    Args:
+        time_str (str): Input time string in any parseable format
+
+    Returns:
+        str: Time in HHMM format (e.g. '1430' for 2:30 PM), or None if parsing fails
+    """
+    try:
+        time_obj = parser.parse(time_str)
+        formatted_time = time_obj.strftime("%H%M")
+        return formatted_time
+    except ValueError:
+        print(f"Exception with time string: {time_str}")
+        return None
