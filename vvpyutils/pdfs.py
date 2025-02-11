@@ -1,5 +1,6 @@
 import base64
 import io
+import subprocess
 from pathlib import Path
 from typing import List, Optional, Union
 
@@ -198,3 +199,31 @@ def combine_pdfs(pdf_files: List[Path], output_file: Path) -> Path:
 
     merged_pdf.write(output_file)
     return output_file
+
+
+def convert_pdf_to_pdfa(input_path: Path, output_path: Path) -> Path:
+    """Converts non-compliant PDF files to PDF/A-1b compliant files using
+    Ghostscript."""
+    input_path, output_path = str(input_path), str(output_path)
+
+    try:
+        # Ghostscript command for PDF/A-1b
+        command = [
+            "gs",
+            "-dPDFA=1",  # PDF/A level
+            "-dBATCH",
+            "-dNOPAUSE",
+            "-sDEVICE=pdfwrite",
+            "-sOutputFile=" + output_path,
+            "-dPDFACompatibilityPolicy=1",
+            input_path,
+        ]
+
+        subprocess.run(command, check=True)
+        print(f"PDF successfully converted to PDF/A: {output_path}")
+    except subprocess.CalledProcessError as e:
+        print(f"Error during PDF/A conversion: {e}")
+    except FileNotFoundError:
+        print("Ghostscript is not installed or not found in PATH.")
+
+    return output_path
