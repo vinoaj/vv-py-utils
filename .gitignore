@@ -162,6 +162,10 @@ cython_debug/
 #.idea/
 
 # VV
+*.pickle
+*secret*.json
+
 .vscode/*
 tests/outputs/*
 !tests/outputs/.gitkeep
+
