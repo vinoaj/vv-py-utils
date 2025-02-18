@@ -283,8 +283,8 @@ class PDFOCRProcessor(BaseModel):
         logger.info(f"Found {len(images)} pages")
         results = []
 
-        for i, image in enumerate(images):
-            page_result = self._process_page(image, i + 1)
+        for page_num, image in enumerate(images):
+            page_result = self._process_page(image, page_num)
             results.append(page_result)
 
         return results
