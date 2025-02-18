@@ -5,6 +5,9 @@ from pathlib import Path
 from typing import List, Optional, Union
 
 import pdf2image
+import pytesseract
+from PIL import Image
+from pydantic import BaseModel
 from pypdf import PdfReader, PdfWriter
 
 from .config.logger import logger
@@ -137,9 +140,10 @@ def pdf_pages_to_images(
     pdf_file: Union[Path, bytes],
     output_path: Path = None,
     return_as_data_url: bool = False,
+    return_as_pil_images: bool = False,
     size: int | tuple[int, int] = None,
     use_cairo: bool = True,
-) -> Union[List[Path], List[str]]:
+) -> Union[List[Path], List[str], List[Image.Image]]:
     """
     Converts a PDF file (path or in-memory bytes) to a series of images and optionally returns them as data URLs.
 
@@ -177,8 +181,13 @@ def pdf_pages_to_images(
             data_urls.append(data_url)
         return data_urls
 
+    if return_as_pil_images:
+        return images
+
     if output_path is None:
-        raise ValueError("output_path must be specified if not returning as data URLs")
+        raise ValueError(
+            "output_path must be specified if not returning as data URLs or bytes"
+        )
 
     file_base = Path(pdf_file).stem if isinstance(pdf_file, Path) else "pdf_image"
     image_paths = []
@@ -227,3 +236,55 @@ def convert_pdf_to_pdfa(input_path: Path, output_path: Path) -> Path:
         print("Ghostscript is not installed or not found in PATH.")
 
     return output_path
+
+
+class OCRResult(BaseModel):
+    """Result of OCR processing for a page"""
+
+    page_num: int
+    text: str
+    confidence: float
+
+
+class PDFOCRProcessor(BaseModel):
+    pdf_path: Path
+    output_dir: Optional[Path] = None
+    language: str = "eng"
+    dpi: int = 300
+
+    def _process_page(self, image, page_num: int) -> OCRResult:
+        ocr_data = pytesseract.image_to_data(
+            image, lang=self.language, output_type=pytesseract.Output.DICT
+        )
+
+        text_parts = []
+        confidences = []
+
+        for i, text in enumerate(ocr_data["text"]):
+            if text and not text.isspace():
+                conf = float(ocr_data["conf"][i])
+                if conf > 0:  # Filter out negative confidence values
+                    text_parts.append(text)
+                    confidences.append(conf)
+
+        # Join text parts
+        full_text = " ".join(text_parts)
+
+        # Calculate average confidence
+        avg_confidence = sum(confidences) / len(confidences) if confidences else 0
+
+        return OCRResult(page_num=page_num, text=full_text, confidence=avg_confidence)
+
+    def process_pdf(self) -> List[OCRResult]:
+        logger.info(f"Performing OCR on PDF: {self.pdf_path}")
+
+        images = pdf_pages_to_images(pdf_file=self.pdf_path, return_as_pil_images=True)
+
+        logger.info(f"Found {len(images)} pages")
+        results = []
+
+        for i, image in enumerate(images):
+            page_result = self._process_page(image, i + 1)
+            results.append(page_result)
+
+        return results

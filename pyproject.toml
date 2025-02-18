@@ -19,6 +19,7 @@ google-auth-oauthlib = "^1.2.1"
 google-auth-httplib2 = "^0.2.0"
 pydantic = "^2.10.6"
 requests = "^2.32.3"
+pytesseract = "^0.3.13"
 
 
 [tool.poetry.group.dev.dependencies]
