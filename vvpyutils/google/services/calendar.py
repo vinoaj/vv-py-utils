@@ -1,22 +1,51 @@
 from datetime import datetime, timezone
-from typing import ClassVar, Optional, Union
+from typing import Any, ClassVar, Optional, Union
 
+from googleapiclient.errors import HttpError
 from pydantic import BaseModel, Field
 
+from ...config.logger import logger
 from ..auth import GoogleAuthManager, Scopes
 from .service import GoogleService
 
 
-class CalendarEvent(BaseModel):
-    """Model representing a Google Calendar event"""
+class CalendarAttendee(BaseModel):
+    # Currently this schema only reflects the minimum required fields to create an event
+    email: str
+    optional: bool = False
+    responseStatus: str = Field(
+        default="needsAction",
+        description="Attendee's response status: needsAction, declined, accepted, or tentative",
+    )
 
-    summary: str
-    start_datetime: datetime
-    end_datetime: datetime
+
+class CalendarEvent(BaseModel):
+    """Model representing a Google Calendar event.
+    Schema at: https://developers.google.com/calendar/api/v3/reference/events
+    """
+
+    # Currently this schema only reflects the minimum required fields to create an event
+
+    status: str = Field(
+        default="confirmed",
+        description="Event status: confirmed, tentative, or cancelled",
+    )
+    summary: str = Field(..., description="Event title")
     description: Optional[str] = None
     location: Optional[str] = None
+    colorId: Optional[str] = None
+    start_datetime: datetime
+    end_datetime: datetime
     timezone: str = Field(
         default="Australia/Sydney", description="Timezone for the event"
+    )
+    recurrence: Optional[list[str]] = None
+    attendees: Optional[list[CalendarAttendee]] = None
+    guestsCanInviteOthers: bool = True
+    guestsCanModify: bool = True
+    visibility: str = Field(
+        default="default",
+        description="Visibility of the event: default, public, or private",
     )
 
 
@@ -28,46 +57,83 @@ class GoogleCalendar(GoogleService):
     service_name: ClassVar[str] = "calendar"
     service_version: ClassVar[str] = "v3"
 
-    def create_event(self, event: Union[CalendarEvent, dict]) -> Optional[dict]:
+    def create_event(
+        self, event: Union[CalendarEvent, dict[str, Any]], calendar_id: str = "primary"
+    ) -> Optional[dict[str, Any]]:
         """
         Create a calendar event
 
         Args:
             event: Either a CalendarEvent instance or a dictionary with event details
+            calendar_id: The calendar ID to create the event in (defaults to "primary")
 
         Returns:
-            The created event or None if creation failed
-        """
-        if isinstance(event, dict):
-            event = CalendarEvent(**event)
+            The created event dictionary or None if creation failed
 
+        Raises:
+            ValueError: If event data is invalid
+        """
+
+        # Convert dict to CalendarEvent and validate
+        try:
+            if isinstance(event, dict):
+                event = CalendarEvent(**event)
+        except ValueError as e:
+            logger.error(f"Invalid event data: {e}")
+            raise ValueError(f"Invalid event data: {e}")
+
+        # Use class timezone if event timezone not specified
+        event_timezone = event.timezone if event.timezone else self.timezone
+
+        # Build event body using dictionary comprehension for optional fields
         event_body = {
+            "status": event.status,
             "summary": event.summary,
             "start": {
                 "dateTime": event.start_datetime.isoformat(),
-                "timeZone": event.timezone,
+                "timeZone": event_timezone,
             },
             "end": {
                 "dateTime": event.end_datetime.isoformat(),
-                "timeZone": event.timezone,
+                "timeZone": event_timezone,
+            },
+            "guestsCanInviteOthers": event.guestsCanInviteOthers,
+            "guestsCanModify": event.guestsCanModify,
+            "visibility": event.visibility,
+            **{
+                k: v
+                for k, v in {
+                    "description": event.description,
+                    "location": event.location,
+                    "colorId": event.colorId,
+                    "recurrence": event.recurrence,
+                }.items()
+                if v is not None
             },
         }
 
-        if event.description:
-            event_body["description"] = event.description
-        if event.location:
-            event_body["location"] = event.location
+        # Handle attendees separately due to different structure
+        if event.attendees:
+            event_body["attendees"] = [
+                {"email": attendee.email}
+                for attendee in event.attendees
+                if attendee.email  # Ensure email is not None
+            ]
 
         try:
             created_event = (
                 self.service.events()
-                .insert(calendarId="primary", body=event_body)
+                .insert(calendarId=calendar_id, body=event_body)
                 .execute()
             )
-            print(f"Event created: {created_event.get('htmlLink')}")
+            logger.info(f"Event created successfully: {created_event.get('htmlLink')}")
             return created_event
+
+        except HttpError as e:
+            logger.error(f"Failed to create event: {e}")
+            return None
         except Exception as e:
-            print(f"An error occurred: {e}")
+            logger.error(f"Unexpected error creating event: {e}")
             return None
 
     def get_events(
@@ -122,40 +188,3 @@ class GoogleCalendar(GoogleService):
         except Exception as e:
             print(f"An error occurred while deleting event: {e}")
             return False
-
-
-if __name__ == "__main__":
-    auth_manager = GoogleAuthManager(
-        # credentials_file=Path("client_secret.json"),
-        # token_file=Path("token.pickle"),
-        scopes=[
-            Scopes.Calendar.EVENTS,
-            Scopes.Gmail.MODIFY,
-        ]
-    )
-
-    calendar = GoogleCalendar(auth_manager=auth_manager, timezone="Australia/Sydney")
-
-    # Example: Create an event for tomorrow
-    # tomorrow = datetime.now() + timedelta(days=1)
-    # event = CalendarEvent(
-    #     summary="Team Meeting",
-    #     start_datetime=tomorrow.replace(hour=10, minute=0),
-    #     end_datetime=tomorrow.replace(hour=11, minute=0),
-    #     description="Weekly team sync",
-    #     location="Conference Room A",
-    #     timezone="America/Los_Angeles",
-    # )
-
-    # created_event = calendar.create_event(event)
-
-    # Get upcoming events
-    upcoming_events = calendar.get_events(max_results=5)
-    for event in upcoming_events:
-        print(
-            f"{event['summary']} - {event['start'].get('dateTime', event['start'].get('date'))}"
-        )
-
-    # Clean up - delete the event we just created
-    # if created_event:
-    #     calendar.delete_event(created_event["id"])

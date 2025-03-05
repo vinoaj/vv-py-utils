@@ -1,5 +1,6 @@
-from vvpyutils.datetimes import convert_date_str_to_YYYYMMDD
 import datetime
+
+from vvpyutils.datetimes import convert_date_str_to_YYYYMMDD
 
 
 def test_valid_date():
@@ -12,6 +13,10 @@ def test_valid_date_with_time():
 
 def test_invalid_date():
     assert convert_date_str_to_YYYYMMDD("invalid-date") is None
+
+
+def test_valid_slash_date():
+    assert convert_date_str_to_YYYYMMDD("07/02/2025") == "2025-02-07"
 
 
 def test_empty_string():

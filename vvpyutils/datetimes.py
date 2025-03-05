@@ -1,43 +1,70 @@
+import re
 from datetime import datetime
 from typing import Optional
 
+import pytz
 from dateparser.search import search_dates
-from dateutil.relativedelta import relativedelta
 from dateutil import parser
+from dateutil.relativedelta import relativedelta
+
+from vvpyutils.config.logger import logger
+from vvpyutils.config.settings import (
+    DEFAULT_TIMEZONE,
+    LOCALE_DATE_ORDERS,
+    LOCALE_DEFAULT,
+)
 
 dateparser_settings = {
-    "RELATIVE_BASE": datetime.now(),  # Use current date as reference
-    "DEFAULT_LANGUAGES": ["en"],  # Use English as default language
-    "PREFER_DATES_FROM": "future",  # Prefer future dates for relative expressions
-    "PREFER_DAY_OF_MONTH": "first",  # Prefer the first day of the month for relative expressions
+    "RELATIVE_BASE": datetime.now(pytz.timezone(DEFAULT_TIMEZONE)),
+    "DEFAULT_LANGUAGES": ["en"],
+    "PREFER_DATES_FROM": "future",
+    "PREFER_DAY_OF_MONTH": "first",
 }
 
 
+def is_iso_format(date_str: str) -> bool:
+    """Check if the date string is in ISO-like format (YYYY-MM-DD)."""
+    return re.match(r"\d{4}-\d{1,2}-\d{1,2}", date_str) is not None
+
+
 def convert_date_str_to_YYYYMMDD(
-    date_str: str, settings: Optional[dict[str, str]] = dateparser_settings
-) -> str | None:
-    """Convert a date string to YYYY-MM-DD format.
+    date_str: str, locale: str = LOCALE_DEFAULT
+) -> Optional[str]:
+    """Convert a date string to YYYY-MM-DD format based on the given locale.
 
     Args:
-        date_str (str): Input date string to convert
-        settings (Optional[dict[str, str]], optional): Custom dateparser settings.
-            Defaults to dateparser_settings.
+        date_str (str): Input date string to convert.
+        locale (str, optional): Locale determining date order for ambiguous formats, e.g., 'en-AU' for Australia, 'en-US' for the United States.Defaults to LOCALE_DEFAULT (typically 'en-AU').
 
     Returns:
-        str | None: Formatted date string in YYYY-MM-DD format if successful, None if conversion fails
+        Optional[str]: Formatted date string in YYYY-MM-DD format, or None if conversion fails.
 
-    Example:
-        >>> convert_date_str_to_YYYYMMDD("January 1st 2023")
-        '2023-01-01'
+    Examples:
+        >>> convert_date_str_to_YYYYMMDD("07/02/2025", locale="en-AU")
+        '2025-02-07'
+        >>> convert_date_str_to_YYYYMMDD("07/02/2025", locale="en-US")
+        '2025-07-02'
     """
-    if date_str is None:
+    if not date_str:
         return None
+
     try:
-        date_obj: list[tuple[str, datetime]] = search_dates(date_str, settings=settings)
-        formatted_date = date_obj[0][1].strftime("%Y-%m-%d")
-        return formatted_date
-    except (ValueError, AttributeError, TypeError) as e:
-        print(f"Exception with date string: {date_str}: {str(e)}")
+        language = locale.split("-")[0]
+        settings = dateparser_settings.copy()
+        settings["DEFAULT_LANGUAGES"] = [language]
+
+        if not is_iso_format(date_str):
+            date_order = LOCALE_DATE_ORDERS.get(locale, "DMY")
+            settings["DATE_ORDER"] = date_order
+
+        if date_obj := search_dates(date_str, settings=settings):
+            parsed_date = date_obj[0][1].astimezone(pytz.timezone(DEFAULT_TIMEZONE))
+            return parsed_date.strftime("%Y-%m-%d")
+        else:
+            logger.error(f"Failed to parse date string: {date_str}")
+            return None
+    except Exception as e:
+        logger.error(f"Exception while parsing date string: {date_str}: {str(e)}")
         return None
 
 
