@@ -59,6 +59,11 @@ def convert_date_str_to_YYYYMMDD(
 
         if date_obj := search_dates(date_str, settings=settings):
             parsed_date = date_obj[0][1].astimezone(pytz.timezone(DEFAULT_TIMEZONE))
+
+            current_year = datetime.now().year
+            if parsed_date.year >= current_year + 99:
+                parsed_date = parsed_date.replace(year=parsed_date.year - 100)
+
             return parsed_date.strftime("%Y-%m-%d")
         else:
             logger.error(f"Failed to parse date string: {date_str}")

@@ -19,6 +19,10 @@ def test_valid_slash_date():
     assert convert_date_str_to_YYYYMMDD("07/02/2025") == "2025-02-07"
 
 
+def test_valid_slash_date_short():
+    assert convert_date_str_to_YYYYMMDD("7/2/25") == "2025-02-07"
+
+
 def test_empty_string():
     assert convert_date_str_to_YYYYMMDD("") is None
 
