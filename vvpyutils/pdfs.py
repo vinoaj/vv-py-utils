@@ -248,9 +248,11 @@ class OCRResult(BaseModel):
 
 class PDFOCRProcessor(BaseModel):
     pdf_path: Path
-    output_dir: Optional[Path] = None
+    # output_dir: Optional[Path] = None
     language: str = "eng"
     dpi: int = 300
+
+    _ocr_results: List[OCRResult] = []
 
     def _process_page(self, image, page_num: int) -> OCRResult:
         ocr_data = pytesseract.image_to_data(
@@ -287,4 +289,9 @@ class PDFOCRProcessor(BaseModel):
             page_result = self._process_page(image, page_num)
             results.append(page_result)
 
-        return results
+        self._ocr_results = results
+        return self._ocr_results
+
+    def ocr_results_to_str(self) -> str:
+        """Convert OCR results to a single string."""
+        return "\n".join([result.text for result in self._ocr_results])
