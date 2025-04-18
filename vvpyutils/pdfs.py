@@ -65,6 +65,50 @@ def get_page_texts(
     ]
 
 
+def is_scanned_pdf(
+    pdf_file: Path | bytes,
+    pages: Optional[list[int]] = None,
+    text_len_threshold: int = 20,
+    page_ratio_threshold: float = 0.9,
+) -> bool:
+    """
+    Returns True if at least `page_ratio_threshold` proportion of the checked pages
+    have less than `text_len_threshold` characters of extractable text and contain image XObjects.
+    """
+    # Load PDF as bytes and initialize reader for resource inspection
+    if isinstance(pdf_file, Path):
+        pdf_data = pdf_file.read_bytes()
+    elif isinstance(pdf_file, bytes):
+        pdf_data = pdf_file
+    else:
+        raise TypeError("pdf_file must be either a Path or bytes")
+    reader = PdfReader(io.BytesIO(pdf_data))
+    # Select page numbers
+    total = len(reader.pages)
+    page_nums = [p for p in (pages or range(total)) if 0 <= p < total]
+    if not page_nums:
+        return False
+    # Extract text for selected pages
+    texts = get_page_texts(pdf_file, pages=page_nums)
+    empty_pages = 0
+    for idx, pnum in enumerate(page_nums):
+        txt = texts[idx]
+        if not txt or len(txt.strip()) < text_len_threshold:
+            # inspect XObject images
+            page = reader.pages[pnum]
+            res = page.get("/Resources", {})
+            xobj = res.get("/XObject", {})
+            img_count = 0
+            for ref in xobj.values():
+                obj = ref.get_object()
+                if obj.get("/Subtype") == "/Image":
+                    img_count += 1
+            if img_count > 0:
+                empty_pages += 1
+    # Determine ratio of likely scanned pages
+    return (empty_pages / len(page_nums)) >= page_ratio_threshold
+
+
 def base64_encode_pdf(
     pdf_file: Path | bytes,
     return_as_data_url: bool = False,
