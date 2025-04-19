@@ -2,7 +2,7 @@ import base64
 import io
 import subprocess
 from pathlib import Path
-from typing import List, Optional, Union
+from typing import List, Optional, Tuple, Union
 
 import pdf2image
 import pytesseract
@@ -295,10 +295,62 @@ class PDFOCRProcessor(BaseModel):
     # output_dir: Optional[Path] = None
     language: str = "eng"
     dpi: int = 300
+    auto_rotate: bool = True  # Whether to automatically correct page rotation
 
     _ocr_results: List[OCRResult] = []
 
+    def _detect_orientation(self, image) -> Tuple[int, float]:
+        """
+        Detect the orientation of text in an image.
+
+        Args:
+            image: PIL Image object
+
+        Returns:
+            Tuple[int, float]: (rotation angle, confidence)
+                rotation angle is 0, 90, 180, or 270 degrees
+        """
+        try:
+            osd = pytesseract.image_to_osd(image, output_type=pytesseract.Output.DICT)
+            angle = osd["rotate"]
+            confidence = osd["orientation_conf"]
+            logger.info(
+                f"Detected orientation: {angle} degrees with {confidence} confidence"
+            )
+            return angle, confidence
+        except Exception as e:
+            logger.warning(f"Failed to detect orientation: {e}")
+            return 0, 0.0  # Default to no rotation if detection fails
+
+    def _correct_orientation(self, image) -> Image.Image:
+        """
+        Correct the orientation of an image based on text orientation.
+
+        Args:
+            image: PIL Image object
+
+        Returns:
+            PIL Image object with corrected orientation
+        """
+        if not self.auto_rotate:
+            return image
+
+        angle, confidence = self._detect_orientation(image)
+
+        # Only rotate if we have reasonable confidence (threshold can be adjusted)
+        if confidence > 1.0:
+            if angle != 0:
+                logger.info(f"Rotating image by {angle} degrees")
+                # PIL rotates counterclockwise, so we need to use negative angle
+                return image.rotate(-angle, expand=True)
+
+        return image
+
     def _process_page(self, image, page_num: int) -> OCRResult:
+        # Correct orientation before OCR processing
+        if self.auto_rotate:
+            image = self._correct_orientation(image)
+
         ocr_data = pytesseract.image_to_data(
             image, lang=self.language, output_type=pytesseract.Output.DICT
         )

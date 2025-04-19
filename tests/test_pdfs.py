@@ -1,9 +1,12 @@
-from pathlib import Path
 import base64
 import io
+from pathlib import Path
+
 import pytest
+from PIL import Image
 from pypdf import PdfReader
-from vvpyutils.pdfs import base64_encode_pdf, get_page_texts
+
+from vvpyutils.pdfs import PDFOCRProcessor, base64_encode_pdf, get_page_texts
 
 SAMPLE_PDFS_PATH = Path(__file__).parent / "pdf_samples"
 SAMPLE_PDFS = ["sample.pdf"]
@@ -104,3 +107,38 @@ def test_read_pages(sample_pdf_bytes):
     assert len(page_texts) == 1
     assert isinstance(page_texts[0], str)
     assert "Sample PDF" in page_texts[0]
+
+
+def test_detect_orientation():
+    """Test rotation detection functionality"""
+    # Create a simple test case with PIL
+    test_img = Image.new("RGB", (300, 100), color="white")
+
+    # This test requires actual text for pytesseract to analyze
+    # In a real test, you would use an actual image with text
+    # but for this test we'll rely on the error handling in _detect_orientation
+
+    processor = PDFOCRProcessor(pdf_path=Path("tests/pdf_samples/sample.pdf"))
+    angle, confidence = processor._detect_orientation(test_img)
+
+    # The blank image should not have a detected orientation
+    # so our fallback should return 0 degrees and 0.0 confidence
+    assert angle == 0
+    assert confidence == 0.0
+
+
+def test_pdf_ocr_with_rotation_option():
+    """Test PDF OCR processing with different rotation settings"""
+    processor_with_rotation = PDFOCRProcessor(
+        pdf_path=Path("tests/pdf_samples/sample.pdf"), auto_rotate=True
+    )
+    results_with_rotation = processor_with_rotation.process_pdf()
+
+    processor_without_rotation = PDFOCRProcessor(
+        pdf_path=Path("tests/pdf_samples/sample.pdf"), auto_rotate=False
+    )
+    results_without_rotation = processor_without_rotation.process_pdf()
+
+    # Both should produce results
+    assert len(results_with_rotation) > 0
+    assert len(results_without_rotation) > 0
