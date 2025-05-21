@@ -5,6 +5,7 @@ Collection of common utility functions I use across a variety of my projects
 ## Installation
 
 ```sh
+uv add git+https://github.com/vinoaj/vv-py-utils
 poetry add git+https://github.com/vinoaj/vv-py-utils
 ```
 
