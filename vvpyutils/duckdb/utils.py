@@ -46,6 +46,45 @@ class DuckUtils(BaseModel):
             else duckdb.connect()
         )
 
+    def get_table_metadata(
+        self, schema_names: Optional[list[str]] = None
+    ) -> pd.DataFrame:
+        """
+        Get detailed metadata for tables in the specified schemas.
+
+        Parameters
+        ----------
+        schema_names : list[str] | None
+            If None or empty: all schemas with tables are scanned.
+            Otherwise: only the specified schemas are scanned (case-sensitive).
+
+        Returns
+        -------
+        pd.DataFrame
+            DataFrame with table metadata from duckdb_tables() system table.
+            Empty DataFrame if no tables are found.
+
+        Notes
+        -----
+        Uses the DuckDB system table function 'duckdb_tables()' to retrieve metadata.
+        """
+        # Create WHERE clause if schemas are specified
+        where_clause = ""
+        if schema_names and len(schema_names) > 0:
+            placeholders = ", ".join(["?"] * len(schema_names))
+            where_clause = f"WHERE schema_name IN ({placeholders})"
+
+        # Construct the complete query
+        query = f"""
+        SELECT * 
+        FROM duckdb_tables() 
+        {where_clause}
+        ORDER BY schema_name, table_name
+        """
+
+        # Execute the query and return a DataFrame
+        return self.conn.execute(query, schema_names if schema_names else []).df()
+
     # ──────────────────────────────────────────────────────────────────────────
     def get_table_row_counts(
         self, schema_names: Optional[list[str]] = None
@@ -67,53 +106,30 @@ class DuckUtils(BaseModel):
 
         Notes
         -----
-        Uses information_schema.tables for metadata and COUNT(*) for row counts.
+        Uses get_table_metadata() and the estimated_size column from duckdb_tables().
         """
         # Create empty DataFrame structure for potential empty returns
         empty_df = pd.DataFrame(columns=["Table", "Row Count"])
 
-        # If schema_names not provided, get all schemas with base tables
-        if not schema_names:
-            schema_names = [
-                s
-                for (s,) in self.conn.execute(
-                    """
-                    SELECT DISTINCT table_schema
-                    FROM information_schema.tables
-                    WHERE table_type = 'BASE TABLE'
-                    ORDER BY table_schema
-                    """
-                ).fetchall()
-            ]
+        # Get table metadata to identify all tables
+        metadata_df = self.get_table_metadata(schema_names)
 
-            if not schema_names:
-                return empty_df
+        # If no tables found, return empty DataFrame
+        if metadata_df.empty:
+            return empty_df
 
-        # Get all table row counts
-        rows = []
-        for schema in schema_names:
-            tables = [
-                t
-                for (t,) in self.conn.execute(
-                    """
-                    SELECT table_name
-                    FROM information_schema.tables
-                    WHERE table_schema = ? AND table_type = 'BASE TABLE'
-                    ORDER BY table_name
-                    """,
-                    [schema],
-                ).fetchall()
-            ]
-
-            for table in tables:
-                count = self.conn.execute(
-                    f'SELECT COUNT(*) FROM "{schema}"."{table}"'
-                ).fetchone()[0]
-                rows.append((f"{schema}.{table}", count))
-
-        return (
-            empty_df if not rows else pd.DataFrame(rows, columns=["Table", "Row Count"])
+        # Create result DataFrame directly from metadata
+        result_df = pd.DataFrame(
+            {
+                "Table": metadata_df["schema_name"] + "." + metadata_df["table_name"],
+                "Row Count": metadata_df["estimated_size"],
+            }
         )
+
+        # Filter out temporary tables to match original behavior
+        result_df = result_df[~metadata_df["temporary"]]
+
+        return result_df
 
     # ──────────────────────────────────────────────────────────────────────────
     def display_table_row_counts(
@@ -150,4 +166,4 @@ class DuckUtils(BaseModel):
             print(f"ⓘ no tables found in {schema_desc}")
             return
 
-        print(df.to_markdown(index=False))
+        print(df.to_markdown(index=False, tablefmt="simple_outline"))
