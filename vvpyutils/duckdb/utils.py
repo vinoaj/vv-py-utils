@@ -22,6 +22,7 @@ class DuckUtils(BaseModel):
     >>> duck = DuckUtils(db_file_path=Path('my_db.duckdb'))
     """
 
+    conn: Optional[duckdb.DuckDBPyConnection] = None
     db_file_path: Optional[Path] = Field(
         default=None,
         description="Path to the DuckDB database file. If None, an in-memory database is used.",
@@ -29,17 +30,13 @@ class DuckUtils(BaseModel):
 
     model_config = {"arbitrary_types_allowed": True}
 
-    @cached_property
-    def conn(self) -> duckdb.DuckDBPyConnection:
-        """
-        Lazily initialized DuckDB connection.
+    def __init__(self, **data):
+        super().__init__(**data)
 
-        Returns
-        -------
-        duckdb.DuckDBPyConnection
-            A connection to either the file-based database specified by
-            db_file_path or to an in-memory database if no path is provided.
-        """
+        if not self.conn:
+            self.conn = self._create_conn()
+
+    def _create_conn(self) -> duckdb.DuckDBPyConnection:
         return (
             duckdb.connect(str(self.db_file_path))
             if self.db_file_path
