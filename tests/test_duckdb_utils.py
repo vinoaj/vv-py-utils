@@ -1,5 +1,3 @@
-from pathlib import Path
-
 import duckdb
 import pytest
 
@@ -88,7 +86,7 @@ def test_file_connection(setup_test_data):
     assert result == 3
 
 
-# Tests for display_schema_table_counts
+# Tests for display_table_row_counts
 def test_display_all_schemas(setup_test_data, capsys):
     """Test displaying all schemas and their table counts."""
     duck_utils = DuckUtils(db_file_path=setup_test_data)
@@ -143,7 +141,7 @@ def test_display_empty_schema(setup_test_data, capsys):
     output = captured.out
 
     # Verify appropriate message is displayed
-    assert "no tables found in schema(s) empty_schema" in output
+    assert "ⓘ no tables found in ['empty_schema']" in output
 
 
 def test_display_nonexistent_schema(setup_test_data, capsys):
@@ -158,7 +156,7 @@ def test_display_nonexistent_schema(setup_test_data, capsys):
     output = captured.out
 
     # Verify appropriate message is displayed
-    assert "no tables found in schema(s) nonexistent_schema" in output
+    assert "ⓘ no tables found in ['nonexistent_schema']" in output
 
 
 def test_empty_database(tmp_path, capsys):
@@ -175,16 +173,16 @@ def test_empty_database(tmp_path, capsys):
     output = captured.out
 
     # Verify appropriate message is displayed
-    assert "ⓘ no tables found in all schemas" in output
+    assert "ⓘ no tables found in None" in output
 
 
-# Tests for get_table_metadata
+# Tests for table-level metadata retrieval
 def test_get_all_schemas_metadata(setup_test_data):
     """Test getting metadata for all schemas."""
     duck_utils = DuckUtils(db_file_path=setup_test_data)
 
     # Call the method that returns a DataFrame
-    df = duck_utils.get_table_metadata()
+    df = duck_utils.get_tables()
 
     # Verify DataFrame contains the essential columns
     essential_columns = ["schema_name", "table_name", "estimated_size", "temporary"]
@@ -217,7 +215,7 @@ def test_get_specific_schemas_metadata(setup_test_data):
     duck_utils = DuckUtils(db_file_path=setup_test_data)
 
     # Call the method with specific schemas
-    df = duck_utils.get_table_metadata(["test_schema1"])
+    df = duck_utils.get_tables(schema_names=["test_schema1"])
 
     # Verify DataFrame contains the essential columns
     essential_columns = ["schema_name", "table_name", "estimated_size", "temporary"]
@@ -248,7 +246,7 @@ def test_get_empty_schema_metadata(setup_test_data):
     duck_utils = DuckUtils(db_file_path=setup_test_data)
 
     # Call the method with an empty schema
-    df = duck_utils.get_table_metadata(["empty_schema"])
+    df = duck_utils.get_tables(schema_names=["empty_schema"])
 
     # Verify DataFrame is empty but has correct structure
     assert df.empty
@@ -262,7 +260,7 @@ def test_get_nonexistent_schema_metadata(setup_test_data):
     duck_utils = DuckUtils(db_file_path=setup_test_data)
 
     # Call the method with a nonexistent schema
-    df = duck_utils.get_table_metadata(["nonexistent_schema"])
+    df = duck_utils.get_tables(schema_names=["nonexistent_schema"])
 
     # Verify DataFrame is empty but has correct structure
     assert df.empty
@@ -278,10 +276,123 @@ def test_get_metadata_empty_database(tmp_path):
     duck_utils = DuckUtils(db_file_path=empty_db_path)
 
     # Call the method
-    df = duck_utils.get_table_metadata()
+    df = duck_utils.get_tables()
 
     # Verify DataFrame is empty but has correct structure
     assert df.empty
     assert "schema_name" in df.columns
     assert "table_name" in df.columns
     assert "estimated_size" in df.columns
+
+
+# Tests for column-level metadata retrieval
+def test_get_tables_with_columns(setup_test_data):
+    """Test getting table metadata with column details."""
+    duck_utils = DuckUtils(db_file_path=setup_test_data)
+
+    # Get tables with column details
+    df = duck_utils.get_tables(include_columns=True)
+
+    # Verify DataFrame contains table and column information
+    assert "schema_name" in df.columns
+    assert "table_name" in df.columns
+    assert "column_name" in df.columns
+    assert "data_type" in df.columns
+    assert "is_nullable" in df.columns
+
+    # Verify we have the expected columns for a specific table
+    table1_columns = df[
+        (df["schema_name"] == "test_schema1") & (df["table_name"] == "table1")
+    ]["column_name"].tolist()
+
+    assert "id" in table1_columns
+    assert "name" in table1_columns
+
+
+def test_get_tables_with_constraints(setup_test_data):
+    """Test getting table metadata with constraints."""
+    duck_utils = DuckUtils(db_file_path=setup_test_data)
+
+    # Get tables with column details and constraints
+    df = duck_utils.get_tables(include_columns=True, include_constraints=True)
+
+    # Verify constraints column exists
+    assert "pk" in df.columns or df.columns.isin(["pk"]).any()
+
+
+# Tests for filtering tables by name
+def test_get_tables_filter_by_table_names(setup_test_data):
+    """Test filtering tables by table names."""
+    duck_utils = DuckUtils(db_file_path=setup_test_data)
+
+    # Should be able to filter by table name without needing column-level detail
+    df = duck_utils.get_tables(
+        schema_names=["test_schema1", "test_schema2"], table_names=["table1", "table3"]
+    )
+
+    # Verify only requested tables are returned
+    table_names = df["table_name"].unique().tolist()
+    assert "table1" in table_names
+    assert "table3" in table_names
+    assert "table2" not in table_names
+
+
+def test_get_tables_filter_by_table_names_only(setup_test_data):
+    """Test filtering tables by table names only without specifying schemas."""
+    duck_utils = DuckUtils(db_file_path=setup_test_data)
+
+    # Should be able to filter by table name only
+    df = duck_utils.get_tables(table_names=["table1"])
+
+    # Verify only the requested table is returned
+    table_names = df["table_name"].unique().tolist()
+    assert len(table_names) == 1
+    assert "table1" in table_names
+    assert "table2" not in table_names
+    assert "table3" not in table_names
+
+
+# Tests for utility methods
+def test_ensure_list_conversion():
+    """Test the _ensure_list utility method."""
+    duck_utils = DuckUtils()
+
+    # Test with various iterable types
+    assert duck_utils._ensure_list(["a", "b"]) == ["a", "b"]
+    assert duck_utils._ensure_list(("a", "b")) == ["a", "b"]
+
+    # For sets, the order is not guaranteed, so we need to check differently
+    set_result = duck_utils._ensure_list({"a", "b"})
+    assert isinstance(set_result, list)
+    assert set(set_result) == {"a", "b"}
+
+    assert duck_utils._ensure_list(None) is None
+
+
+# Tests for direct use of the get_metadata method
+def test_get_metadata_directly(setup_test_data):
+    """Test the get_metadata method directly."""
+    duck_utils = DuckUtils(db_file_path=setup_test_data)
+
+    # Test table-level metadata
+    table_df = duck_utils.get_metadata(detail_level="table")
+    assert "schema_name" in table_df.columns
+    assert "table_name" in table_df.columns
+    assert "estimated_size" in table_df.columns
+
+    # Test column-level metadata
+    column_df = duck_utils.get_metadata(detail_level="column")
+    assert "schema_name" in column_df.columns
+    assert "table_name" in column_df.columns
+    assert "column_name" in column_df.columns
+    assert "data_type" in column_df.columns
+
+    # Test with constraints
+    constraints_df = duck_utils.get_metadata(
+        detail_level="column", include_constraints=True
+    )
+    assert "pk" in constraints_df.columns or constraints_df.columns.isin(["pk"]).any()
+
+
+if __name__ == "__main__":
+    pytest.main([__file__])

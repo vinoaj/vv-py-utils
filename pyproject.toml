@@ -29,7 +29,10 @@ pdfs = [
 ]
 
 [dependency-groups]
-dev = ["pytest<9.0.0,>=8.3.3", "devtools<1.0.0,>=0.12.2"]
+dev = [
+    "pytest>=8.3.3,<9.0.0",
+    "devtools<1.0.0,>=0.12.2",
+]
 
 [project.scripts]
 tests = "pytest:main"
