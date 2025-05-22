@@ -8,18 +8,20 @@ requires-python = "<4.0,>=3.12"
 dependencies = [
     "json-repair<1.0.0,>=0.30.0",
     "dateparser<2.0.0,>=1.2.0",
-    "google-api-python-client<3.0.0,>=2.157.0",
     "pandas<3.0.0,>=2.2.3",
-    "google-auth-oauthlib<2.0.0,>=1.2.1",
-    "google-auth-httplib2<1.0.0,>=0.2.0",
     "pydantic<3.0.0,>=2.10.6",
-    "requests<3.0.0,>=2.32.3",
 ]
 
 
 [project.optional-dependencies]
 docx = ["docx2pdf<1.0.0,>=0.1.8"]
 duckdb = ["duckdb<2.0.0,>=1.2.2", "tabulate<1.0.0,>=0.9.0"]
+google = [
+    "google-api-python-client<3.0.0,>=2.157.0",
+    "google-auth-oauthlib<2.0.0,>=1.2.1",
+    "google-auth-httplib2<1.0.0,>=0.2.0",
+    "requests<3.0.0,>=2.32.3",
+]
 pdfs = [
     "pdf2image<2.0.0,>=1.17.0",
     "pypdf<6.0.0,>=5.1.0",

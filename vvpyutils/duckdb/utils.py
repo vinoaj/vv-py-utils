@@ -86,60 +86,13 @@ class DuckUtils(BaseModel):
         return self.conn.execute(query, schema_names if schema_names else []).df()
 
     # ──────────────────────────────────────────────────────────────────────────
-    def get_table_row_counts(
-        self, schema_names: Optional[list[str]] = None
-    ) -> pd.DataFrame:
-        """
-        Get row counts for tables in the specified schemas.
-
-        Parameters
-        ----------
-        schema_names : list[str] | None
-            If None or empty: all schemas with tables are scanned.
-            Otherwise: only the specified schemas are scanned (case-sensitive).
-
-        Returns
-        -------
-        pd.DataFrame
-            DataFrame with columns "Table" (schema.table_name) and "Row Count".
-            Empty DataFrame if no tables are found.
-
-        Notes
-        -----
-        Uses get_table_metadata() and the estimated_size column from duckdb_tables().
-        """
-        # Create empty DataFrame structure for potential empty returns
-        empty_df = pd.DataFrame(columns=["Table", "Row Count"])
-
-        # Get table metadata to identify all tables
-        metadata_df = self.get_table_metadata(schema_names)
-
-        # If no tables found, return empty DataFrame
-        if metadata_df.empty:
-            return empty_df
-
-        # Create result DataFrame directly from metadata
-        result_df = pd.DataFrame(
-            {
-                "Table": metadata_df["schema_name"] + "." + metadata_df["table_name"],
-                "Row Count": metadata_df["estimated_size"],
-            }
-        )
-
-        # Filter out temporary tables to match original behavior
-        result_df = result_df[~metadata_df["temporary"]]
-
-        return result_df
-
-    # ──────────────────────────────────────────────────────────────────────────
     def display_table_row_counts(
         self, schema_names: Optional[list[str]] = None
     ) -> None:
         """
         Print formatted table row counts to the console.
 
-        A convenience wrapper around get_table_row_counts() that
-        displays results as a Markdown table.
+        Displays table row counts directly from metadata as a Markdown table.
 
         Parameters
         ----------
@@ -155,7 +108,28 @@ class DuckUtils(BaseModel):
         >>> # Display counts only for 'main' schema
         >>> duck.display_table_row_counts(['main'])
         """
-        df = self.get_table_row_counts(schema_names)
+        # Get table metadata directly
+        metadata_df = self.get_table_metadata(schema_names)
+
+        if metadata_df.empty:
+            schema_desc = (
+                "all schemas"
+                if not schema_names
+                else f"schema(s) {', '.join(schema_names or [])}"
+            )
+            print(f"ⓘ no tables found in {schema_desc}")
+            return
+
+        # Create result DataFrame directly from metadata
+        df = pd.DataFrame(
+            {
+                "Table": metadata_df["schema_name"] + "." + metadata_df["table_name"],
+                "Row Count": metadata_df["estimated_size"],
+            }
+        )
+
+        # Filter out temporary tables
+        df = df[~metadata_df["temporary"]]
 
         if df.empty:
             schema_desc = (
@@ -166,4 +140,19 @@ class DuckUtils(BaseModel):
             print(f"ⓘ no tables found in {schema_desc}")
             return
 
-        print(df.to_markdown(index=False, tablefmt="simple_outline"))
+        # Format row counts with thousand separators
+        df["Row Count"] = df["Row Count"].apply(lambda x: format(x, ","))
+
+        # Define column alignment (right-align the Row Count column)
+        colalign = ["left", "right"]
+
+        print(df.to_markdown(index=False, tablefmt="simple_outline", colalign=colalign))
+
+
+if __name__ == "__main__":
+    d = DuckUtils(
+        db_file_path=Path(
+            "/Users/vinoaj/My Drive/!!resources/Health/Genetic Data/23andMe/genetics.db"
+        )
+    )
+    d.display_table_row_counts()
