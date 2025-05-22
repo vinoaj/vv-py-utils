@@ -178,88 +178,110 @@ def test_empty_database(tmp_path, capsys):
     assert "ⓘ no tables found in all schemas" in output
 
 
-# Tests for get_table_row_counts
-def test_get_all_schemas_row_counts(setup_test_data):
-    """Test getting row counts for all schemas."""
+# Tests for get_table_metadata
+def test_get_all_schemas_metadata(setup_test_data):
+    """Test getting metadata for all schemas."""
     duck_utils = DuckUtils(db_file_path=setup_test_data)
 
     # Call the method that returns a DataFrame
-    df = duck_utils.get_table_row_counts()
+    df = duck_utils.get_table_metadata()
 
-    # Verify DataFrame structure
-    assert list(df.columns) == ["Table", "Row Count"]
+    # Verify DataFrame contains the essential columns
+    essential_columns = ["schema_name", "table_name", "estimated_size", "temporary"]
+    for col in essential_columns:
+        assert col in df.columns
 
     # Verify all schemas are included
-    tables = df["Table"].tolist()
-    assert "test_schema1.table1" in tables
-    assert "test_schema1.table2" in tables
-    assert "test_schema2.table3" in tables
-    assert "special-schema.table-with-dashes" in tables
+    schema_tables = [
+        f"{row['schema_name']}.{row['table_name']}" for _, row in df.iterrows()
+    ]
+    assert "test_schema1.table1" in schema_tables
+    assert "test_schema1.table2" in schema_tables
+    assert "test_schema2.table3" in schema_tables
+    assert "special-schema.table-with-dashes" in schema_tables
 
     # Verify row counts are correct
-    table_counts = dict(zip(df["Table"], df["Row Count"]))
+    table_counts = {}
+    for _, row in df.iterrows():
+        table_name = f"{row['schema_name']}.{row['table_name']}"
+        table_counts[table_name] = row["estimated_size"]
+
     assert table_counts["test_schema1.table1"] == 3
     assert table_counts["test_schema1.table2"] == 2
     assert table_counts["test_schema2.table3"] == 5
     assert table_counts["special-schema.table-with-dashes"] == 4
 
 
-def test_get_specific_schemas_row_counts(setup_test_data):
-    """Test getting row counts for specific schemas."""
+def test_get_specific_schemas_metadata(setup_test_data):
+    """Test getting metadata for specific schemas."""
     duck_utils = DuckUtils(db_file_path=setup_test_data)
 
     # Call the method with specific schemas
-    df = duck_utils.get_table_row_counts(["test_schema1"])
+    df = duck_utils.get_table_metadata(["test_schema1"])
 
-    # Verify DataFrame structure
-    assert list(df.columns) == ["Table", "Row Count"]
+    # Verify DataFrame contains the essential columns
+    essential_columns = ["schema_name", "table_name", "estimated_size", "temporary"]
+    for col in essential_columns:
+        assert col in df.columns
 
     # Verify only test_schema1 tables are included
-    tables = df["Table"].tolist()
-    assert "test_schema1.table1" in tables
-    assert "test_schema1.table2" in tables
-    assert "test_schema2.table3" not in tables
-    assert "special-schema.table-with-dashes" not in tables
+    schema_tables = [
+        f"{row['schema_name']}.{row['table_name']}" for _, row in df.iterrows()
+    ]
+    assert "test_schema1.table1" in schema_tables
+    assert "test_schema1.table2" in schema_tables
+    assert "test_schema2.table3" not in schema_tables
+    assert "special-schema.table-with-dashes" not in schema_tables
 
     # Verify row counts are correct
-    table_counts = dict(zip(df["Table"], df["Row Count"]))
+    table_counts = {}
+    for _, row in df.iterrows():
+        table_name = f"{row['schema_name']}.{row['table_name']}"
+        table_counts[table_name] = row["estimated_size"]
+
     assert table_counts["test_schema1.table1"] == 3
     assert table_counts["test_schema1.table2"] == 2
 
 
-def test_get_empty_schema_row_counts(setup_test_data):
-    """Test getting row counts for an empty schema."""
+def test_get_empty_schema_metadata(setup_test_data):
+    """Test getting metadata for an empty schema."""
     duck_utils = DuckUtils(db_file_path=setup_test_data)
 
     # Call the method with an empty schema
-    df = duck_utils.get_table_row_counts(["empty_schema"])
+    df = duck_utils.get_table_metadata(["empty_schema"])
 
     # Verify DataFrame is empty but has correct structure
     assert df.empty
-    assert list(df.columns) == ["Table", "Row Count"]
+    assert "schema_name" in df.columns
+    assert "table_name" in df.columns
+    assert "estimated_size" in df.columns
 
 
-def test_get_nonexistent_schema_row_counts(setup_test_data):
-    """Test getting row counts for a nonexistent schema."""
+def test_get_nonexistent_schema_metadata(setup_test_data):
+    """Test getting metadata for a nonexistent schema."""
     duck_utils = DuckUtils(db_file_path=setup_test_data)
 
     # Call the method with a nonexistent schema
-    df = duck_utils.get_table_row_counts(["nonexistent_schema"])
+    df = duck_utils.get_table_metadata(["nonexistent_schema"])
 
     # Verify DataFrame is empty but has correct structure
     assert df.empty
-    assert list(df.columns) == ["Table", "Row Count"]
+    assert "schema_name" in df.columns
+    assert "table_name" in df.columns
+    assert "estimated_size" in df.columns
 
 
-def test_get_row_counts_empty_database(tmp_path):
-    """Test getting row counts with a completely empty database."""
+def test_get_metadata_empty_database(tmp_path):
+    """Test getting metadata with a completely empty database."""
     # Create an empty database file
     empty_db_path = tmp_path / "empty_db.duckdb"
     duck_utils = DuckUtils(db_file_path=empty_db_path)
 
     # Call the method
-    df = duck_utils.get_table_row_counts()
+    df = duck_utils.get_table_metadata()
 
     # Verify DataFrame is empty but has correct structure
     assert df.empty
-    assert list(df.columns) == ["Table", "Row Count"]
+    assert "schema_name" in df.columns
+    assert "table_name" in df.columns
+    assert "estimated_size" in df.columns

@@ -45,3 +45,22 @@ for event in upcoming_events:
 
 - Utilises the [docx2pdf](https://github.com/AlJohri/docx2pdf) package
   - For this to work, you need Microsoft Word present on your device
+
+## Development
+
+### Running tests
+
+#### Run all tests
+
+```sh
+uv run tests
+
+# or
+uv run pytest tests/ -v
+```
+
+#### Run specific test
+
+```sh
+uv run pytest tests/test_duckdb_utils.py -v
+```

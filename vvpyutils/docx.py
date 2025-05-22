@@ -1,8 +1,8 @@
+from pathlib import Path
+from typing import List, Optional
+
 from docx2pdf import convert
 
-# import argparse
-from typing import Optional, List
-from pathlib import Path
 from .config.logger import logger
 
 
