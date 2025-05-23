@@ -208,26 +208,26 @@ class DuckUtils(BaseModel):
             # truncate long column lists
             if max_columns and len(grp) > max_columns:
                 grp = grp.head(max_columns).copy()
-                # Ensure placeholder row matches the new structure of grp
-                current_row_count = (
-                    grp["row_count"].iloc[0] if not grp.empty else np.nan
-                )
-                current_table_comment = (
-                    grp["table_comment"].iloc[0] if not grp.empty else np.nan
-                )
-                grp.loc[len(grp)] = [
-                    schema,
-                    table,
-                    None,  # column_index
-                    "…",  # column_name
-                    "…",  # column_comment
-                    "…",  # data_type
-                    np.nan,  # column_default
-                    np.nan,  # has_default
-                    np.nan,  # is_nullable
-                    current_row_count,  # row_count (table-level)
-                    current_table_comment,  # table_comment (table-level)
-                ][: len(grp.columns)]
+
+                # Create a placeholder row more robustly
+                if not grp.empty:
+                    # Start with a copy of the last row to ensure column structure is identical
+                    placeholder = grp.iloc[-1:].copy()
+
+                    # Update placeholder values
+                    placeholder["column_index"] = None
+                    placeholder["column_name"] = "…"
+
+                    # Set other column values where they exist
+                    for col in placeholder.columns:
+                        if col == "column_comment":
+                            placeholder[col] = "…"
+                        elif col == "data_type":
+                            placeholder[col] = "…"
+                        # Keep existing values for schema-level and table-level fields
+
+                    # Append placeholder row
+                    grp = pd.concat([grp, placeholder], ignore_index=True)
 
             # ── column table ----------------------------------------------------
             cols = pd.DataFrame(
@@ -239,14 +239,28 @@ class DuckUtils(BaseModel):
             )
 
             if include_constraints:
-                pk_raw = grp["pk"].iloc[0]
+                # Check if pk column exists and handle primary key information
                 pk_set: set[str] = set()
-                if isinstance(pk_raw, list):
-                    pk_set = set(pk_raw)
 
-                cols.loc[:, "PK"] = (
-                    cols["Column"].isin(pk_set).map({True: "✓", False: ""})
-                )
+                if "pk" in grp.columns and len(grp) > 0:
+                    pk_raw = grp["pk"].iloc[0]
+
+                    if pk_raw is not None:
+                        # Handle both list and numpy.ndarray types
+                        if hasattr(pk_raw, "__iter__") and not isinstance(pk_raw, str):
+                            # Convert to Python list if it's a NumPy array or other iterable
+                            pk_list = list(pk_raw)
+                            pk_set = set(pk_list)
+
+                # Add PK column and mark primary key columns with checkmark
+                cols.loc[:, "PK"] = ""
+
+                # Mark primary key columns
+                for col_name in pk_set:
+                    # Convert both to string to ensure matching
+                    mask = cols["Column"].astype(str) == str(col_name)
+                    if mask.any():
+                        cols.loc[mask, "PK"] = "✓"
 
             # ── header ---------------------------------------------------------
             rows = int(grp["row_count"].iloc[0]) if include_row_counts else 0
@@ -316,7 +330,7 @@ class DuckUtils(BaseModel):
         table_names: Optional[Iterable[str]] = None,
         *,
         detail_level: Literal["table", "column"] = "table",
-        include_constraints: bool = False,
+        include_constraints: bool = True,
     ) -> pd.DataFrame:
         """
         Get metadata for tables and columns with flexible detail levels.
@@ -404,6 +418,7 @@ class DuckUtils(BaseModel):
 
             # Add constraint information if requested
             if include_constraints and not result_df.empty:
+                # First get the primary key information
                 pk_df = self.conn.execute(
                     """
                     SELECT schema_name,
@@ -413,6 +428,9 @@ class DuckUtils(BaseModel):
                     WHERE constraint_type = 'PRIMARY KEY'
                     """
                 ).df()
+
+                # Debug the constraint information
+                # Merge with main dataframe
                 result_df = result_df.merge(
                     pk_df, on=["schema_name", "table_name"], how="left"
                 )
