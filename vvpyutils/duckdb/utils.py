@@ -25,6 +25,94 @@ class DuckUtils(BaseModel):
         "You have access to the following tables. If you require any data from them, provide the SQL query to extract the data."
     )
 
+    # SQL query templates for metadata retrieval
+    _TABLE_METADATA_QUERY: ClassVar[str] = """
+    SELECT 
+        schema_name, 
+        table_name,
+        estimated_size,
+        temporary,
+        has_primary_key,
+        column_count,
+        comment,
+        'table' AS object_type
+    FROM duckdb_tables()
+    {where_clause}
+    """
+
+    _VIEW_METADATA_QUERY: ClassVar[str] = """
+    SELECT 
+        schema_name, 
+        view_name AS table_name,
+        column_count AS estimated_size,
+        temporary,
+        false AS has_primary_key,
+        column_count,
+        comment,
+        'view' AS object_type
+    FROM duckdb_views()
+    {where_clause}
+    """
+
+    _COLUMN_METADATA_TABLE_QUERY: ClassVar[str] = """
+    SELECT  t.schema_name,
+            t.table_name,
+            dc.column_index,
+            dc.column_name,
+            dc.comment                       AS column_comment,
+            dc.data_type,
+            isc.column_default,
+            (isc.column_default IS NOT NULL) AS has_default,
+            isc.is_nullable = 'YES'          AS is_nullable,
+            t.estimated_size                 AS row_count,
+            t.comment                        AS table_comment,
+            'table'                          AS object_type
+    FROM duckdb_tables() t
+    JOIN duckdb_columns() dc
+        ON  dc.schema_name = t.schema_name
+        AND dc.table_name = t.table_name
+    JOIN information_schema.columns isc
+        ON  isc.table_schema = dc.schema_name
+        AND isc.table_name   = dc.table_name
+        AND isc.column_name  = dc.column_name
+    {where_clause}
+    """
+
+    _COLUMN_METADATA_VIEW_QUERY: ClassVar[str] = """
+    SELECT  v.schema_name,
+            v.view_name AS table_name,
+            dc.column_index,
+            dc.column_name,
+            dc.comment                       AS column_comment,
+            dc.data_type,
+            isc.column_default,
+            (isc.column_default IS NOT NULL) AS has_default,
+            isc.is_nullable = 'YES'          AS is_nullable,
+            v.column_count                   AS row_count,
+            v.comment                        AS table_comment,
+            'view'                           AS object_type
+    FROM duckdb_views() v
+    JOIN duckdb_columns() dc
+        ON  dc.schema_name = v.schema_name
+        AND dc.table_name = v.view_name
+    JOIN information_schema.columns isc
+        ON  isc.table_schema = dc.schema_name
+        AND isc.table_name   = dc.table_name
+        AND isc.column_name  = dc.column_name
+    {where_clause}
+    """
+
+    _PK_CONSTRAINTS_QUERY: ClassVar[str] = """
+    SELECT schema_name,
+           table_name,
+           constraint_column_names AS pk
+    FROM duckdb_constraints()
+    WHERE constraint_type = 'PRIMARY KEY'
+    """
+
+    # System schemas to filter out when include_system_views=False
+    _SYSTEM_SCHEMAS: ClassVar[list[str]] = ["information_schema", "main", "pg_catalog"]
+
     model_config = {"arbitrary_types_allowed": True}
 
     def __init__(self, **data):
@@ -65,6 +153,8 @@ class DuckUtils(BaseModel):
         *,
         include_columns: bool = False,
         include_constraints: bool = False,
+        include_views: bool = True,
+        include_system_views: bool = True,
     ) -> pd.DataFrame:
         """
         Get table metadata with flexible detail levels.
@@ -86,6 +176,12 @@ class DuckUtils(BaseModel):
         include_constraints : bool, default False
             Whether to include constraint information (primary keys, etc.).
             Only applies when include_columns is True.
+        include_views : bool, default True
+            Whether to include views in the results. When True, both tables and views
+            are returned. When False, only tables are returned.
+        include_system_views : bool, default True
+            Whether to include system views (from schemas like 'information_schema',
+            'pg_catalog', etc.). When False, only user-created views are included.
 
         Returns
         -------
@@ -105,6 +201,8 @@ class DuckUtils(BaseModel):
             table_names=table_names,
             detail_level=detail_level,
             include_constraints=include_constraints and include_columns,
+            include_views=include_views,
+            include_system_views=include_system_views,
         )
 
     def display_table_row_counts(
@@ -167,6 +265,8 @@ class DuckUtils(BaseModel):
         *,
         include_row_counts: bool = True,
         include_constraints: bool = True,
+        include_views: bool = True,
+        include_system_views: bool = False,
         max_tables: int | None = None,
         max_columns: int | None = None,
         format_: Literal["markdown", "json"] = "markdown",
@@ -177,6 +277,36 @@ class DuckUtils(BaseModel):
         The output is either GitHub-style Markdown or a JSON blob.  Row counts
         now appear in the header (not per column); per-column *Comment* has
         been added, and PK flags remain optional.
+
+        Parameters
+        ----------
+        schema_names : Iterable[str] or None
+            Iterable of schema names to filter by. If None, all schemas are included.
+        table_names : Iterable[str] or None
+            Iterable of table names to filter by. If None, all tables are included.
+        include_row_counts : bool, default True
+            Whether to include row counts in the output.
+        include_constraints : bool, default True
+            Whether to include primary key constraints in the output.
+        include_views : bool, default True
+            Whether to include views in the result. When True, both tables and views
+            are returned. When False, only tables are returned.
+        include_system_views : bool, default False
+            Whether to include system views (from schemas like 'information_schema',
+            'pg_catalog', etc). By default, only user-created views are included in LLM prompts.
+        max_tables : int or None, default None
+            Maximum number of tables to include in output. If None, all tables are included.
+        max_columns : int or None, default None
+            Maximum number of columns per table to include in output. If None, all columns are included.
+        format_ : Literal["markdown", "json"], default "markdown"
+            Output format, either "markdown" or "json".
+        prompt_prefix : str or None, default None
+            Prefix to add before the catalog. If None, a default prefix is used.
+
+        Returns
+        -------
+        str
+            LLM-friendly catalog of tables and columns in the specified format.
         """
 
         prefix = prompt_prefix or self._PROMPT_PREFIX
@@ -188,6 +318,8 @@ class DuckUtils(BaseModel):
             table_names=table_names,
             include_columns=True,
             include_constraints=include_constraints,
+            include_views=include_views,
+            include_system_views=include_system_views,
         )
 
         if df.empty:
@@ -323,6 +455,163 @@ class DuckUtils(BaseModel):
         where_clause = f"WHERE {' AND '.join(where_parts)}" if where_parts else ""
         return where_clause, params
 
+    def _build_entity_conditions(
+        self,
+        entity_type: Literal["table", "view"],
+        schema_list: Optional[list[str]],
+        table_list: Optional[list[str]],
+    ) -> dict[str, Optional[list[str]]]:
+        """
+        Build conditions dictionary for tables or views.
+
+        Parameters
+        ----------
+        entity_type : Literal["table", "view"]
+            The type of entity to build conditions for.
+        schema_list : Optional[list[str]]
+            List of schema names to filter by.
+        table_list : Optional[list[str]]
+            List of table names to filter by.
+
+        Returns
+        -------
+        dict[str, Optional[list[str]]]
+            Dictionary of column names to values for building WHERE clauses.
+        """
+        conditions = {}
+
+        if schema_list:
+            conditions["schema_name"] = schema_list
+
+        if table_list:
+            if entity_type == "table":
+                conditions["table_name"] = table_list
+            else:
+                conditions["view_name"] = table_list
+
+        return conditions
+
+    def _get_entity_metadata(
+        self,
+        entity_type: Literal["table", "view"],
+        detail_level: Literal["table", "column"],
+        schema_list: Optional[list[str]],
+        table_list: Optional[list[str]],
+    ) -> pd.DataFrame:
+        """
+        Get metadata for a specific entity type (table or view).
+
+        Parameters
+        ----------
+        entity_type : Literal["table", "view"]
+            The type of entity to get metadata for.
+        detail_level : Literal["table", "column"]
+            Level of detail for the metadata.
+        schema_list : Optional[list[str]]
+            List of schema names to filter by.
+        table_list : Optional[list[str]]
+            List of table names to filter by.
+
+        Returns
+        -------
+        pd.DataFrame
+            DataFrame containing metadata for the specified entity type.
+        """
+        # Build conditions based on entity type
+        conditions = self._build_entity_conditions(entity_type, schema_list, table_list)
+
+        # Get the appropriate query template
+        if detail_level == "table":
+            query_template = (
+                self._TABLE_METADATA_QUERY
+                if entity_type == "table"
+                else self._VIEW_METADATA_QUERY
+            )
+            where_clause, params = self._build_where_clause(conditions)
+        else:  # column level
+            query_template = (
+                self._COLUMN_METADATA_TABLE_QUERY
+                if entity_type == "table"
+                else self._COLUMN_METADATA_VIEW_QUERY
+            )
+            table_alias = entity_type[0]  # "t" for table, "v" for view
+            where_clause, params = self._build_where_clause(conditions, table_alias)
+
+        # Format the query with the where clause
+        query = query_template.format(where_clause=where_clause)
+
+        # Execute the query and return the results
+        return self.conn.execute(query, params).df()
+
+    def _filter_system_views(self, df: pd.DataFrame) -> pd.DataFrame:
+        """
+        Filter out system views from a DataFrame.
+
+        Parameters
+        ----------
+        df : pd.DataFrame
+            DataFrame containing metadata with 'object_type' and 'schema_name' columns.
+
+        Returns
+        -------
+        pd.DataFrame
+            DataFrame with system views filtered out.
+        """
+        if df.empty:
+            return df
+
+        # Keep tables and user views
+        return df[
+            (df["object_type"] == "table")
+            | (
+                (df["object_type"] == "view")
+                & ~df["schema_name"].isin(self._SYSTEM_SCHEMAS)
+            )
+        ]
+
+    def _combine_and_process_results(
+        self,
+        tables_df: pd.DataFrame,
+        views_df: Optional[pd.DataFrame] = None,
+        include_system_views: bool = True,
+        sort_by: list[str] = ["schema_name", "table_name"],
+    ) -> pd.DataFrame:
+        """
+        Combine and process table and view metadata.
+
+        Parameters
+        ----------
+        tables_df : pd.DataFrame
+            DataFrame containing table metadata.
+        views_df : Optional[pd.DataFrame], default None
+            DataFrame containing view metadata. If None, only tables are included.
+        include_system_views : bool, default True
+            Whether to include system views.
+        sort_by : list[str], default ["schema_name", "table_name"]
+            Columns to sort the result by.
+
+        Returns
+        -------
+        pd.DataFrame
+            Combined and processed DataFrame.
+        """
+        # If no views are provided, just return the tables
+        if views_df is None or views_df.empty:
+            result_df = tables_df
+        else:
+            # Combine tables and views
+            result_df = pd.concat([tables_df, views_df], ignore_index=True)
+
+        # Filter system views if requested
+        if not include_system_views:
+            result_df = self._filter_system_views(result_df)
+
+        # Sort the results
+        if not result_df.empty and all(col in result_df.columns for col in sort_by):
+            result_df = result_df.sort_values(by=sort_by)
+
+        return result_df
+
     def get_metadata(
         self,
         schema_names: Optional[Iterable[str]] = None,
@@ -330,6 +619,8 @@ class DuckUtils(BaseModel):
         *,
         detail_level: Literal["table", "column"] = "table",
         include_constraints: bool = True,
+        include_views: bool = True,
+        include_system_views: bool = True,
     ) -> pd.DataFrame:
         """
         Get metadata for tables and columns with flexible detail levels.
@@ -349,9 +640,15 @@ class DuckUtils(BaseModel):
             Level of detail to return:
             - "table": Only table-level metadata (faster, less detail)
             - "column": Table and column-level metadata (slower, more detail)
-        include_constraints : bool, default False
+        include_constraints : bool, default True
             Whether to include constraint information (primary keys, etc.)
             Only applies when detail_level is "column".
+        include_views : bool, default True
+            Whether to include views in the results. When True, both tables and views
+            are returned. When False, only tables are returned.
+        include_system_views : bool, default True
+            Whether to include system views (from schemas like 'information_schema',
+            'pg_catalog', etc.). When False, only user-created views are included.
 
         Returns
         -------
@@ -363,75 +660,46 @@ class DuckUtils(BaseModel):
         schema_list = self._ensure_list(schema_names)
         table_list = self._ensure_list(table_names)
 
-        if detail_level == "table":
-            # Table-level metadata (simple query)
-            if table_list:
-                # If table names are provided, we need a more complex query to filter by both schema and table
-                conditions = {"schema_name": schema_list, "table_name": table_list}
-                where_clause, params = self._build_where_clause(conditions)
-            else:
-                # Simple schema filtering if no table names provided
-                conditions = {"schema_name": schema_list}
-                where_clause, params = self._build_where_clause(conditions)
+        # Get table metadata
+        tables_df = self._get_entity_metadata(
+            "table", detail_level, schema_list, table_list
+        )
 
-            query = f"""
-            SELECT * 
-            FROM duckdb_tables() 
-            {where_clause}
-            ORDER BY schema_name, table_name
-            """
+        # Get view metadata if requested
+        views_df = None
+        if include_views:
+            views_df = self._get_entity_metadata(
+                "view", detail_level, schema_list, table_list
+            )
 
-            return self.conn.execute(query, params).df()
-        else:
-            # Column-level metadata (detailed query)
-            conditions = {"schema_name": schema_list, "table_name": table_list}
-            where_clause, params = self._build_where_clause(conditions, "ft")
+        # Sort columns for column-level detail
+        sort_by = ["schema_name", "table_name"]
+        if detail_level == "column":
+            sort_by.append("column_index")
 
-            sql = f"""
-                WITH filtered_tables AS (
-                    SELECT * FROM duckdb_tables() ft
-                    {where_clause}
-                )
-                SELECT  dc.schema_name,
-                        dc.table_name,
-                        dc.column_index,
-                        dc.column_name,
-                        dc.comment                       AS column_comment,
-                        dc.data_type,
-                        isc.column_default,
-                        (isc.column_default IS NOT NULL) AS has_default,
-                        isc.is_nullable = 'YES'          AS is_nullable,
-                        ft.estimated_size                AS row_count,
-                        ft.comment                       AS table_comment
-                FROM filtered_tables ft
-                JOIN duckdb_columns() dc
-                    USING (schema_name, table_name)
-                JOIN information_schema.columns isc
-                    ON  isc.table_schema = dc.schema_name
-                    AND isc.table_name   = dc.table_name
-                    AND isc.column_name  = dc.column_name
-                ORDER BY dc.schema_name, dc.table_name, dc.column_index
-            """
+        # Combine and process results
+        result_df = self._combine_and_process_results(
+            tables_df, views_df, include_system_views, sort_by
+        )
 
-            result_df = self.conn.execute(sql, params).df()
+        # Add constraint information if requested (only for column-level detail)
+        if detail_level == "column" and include_constraints and not result_df.empty:
+            # Get primary key information
+            pk_df = self.conn.execute(self._PK_CONSTRAINTS_QUERY).df()
 
-            # Add constraint information if requested
-            if include_constraints and not result_df.empty:
-                # First get the primary key information
-                pk_df = self.conn.execute(
-                    """
-                    SELECT schema_name,
-                           table_name,
-                           constraint_column_names AS pk
-                    FROM duckdb_constraints()
-                    WHERE constraint_type = 'PRIMARY KEY'
-                    """
-                ).df()
+            # Merge primary key info with tables only (not views)
+            tables_with_pk = result_df[result_df["object_type"] == "table"].merge(
+                pk_df, on=["schema_name", "table_name"], how="left"
+            )
 
-                # Debug the constraint information
-                # Merge with main dataframe
-                result_df = result_df.merge(
-                    pk_df, on=["schema_name", "table_name"], how="left"
-                )
+            # For views, set pk to null
+            views = result_df[result_df["object_type"] == "view"].copy()
+            views["pk"] = None
 
-            return result_df
+            # Combine tables and views again
+            result_df = pd.concat([tables_with_pk, views], ignore_index=True)
+
+            # Resort
+            result_df = result_df.sort_values(by=sort_by)
+
+        return result_df
