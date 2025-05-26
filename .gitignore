@@ -165,5 +165,7 @@ cython_debug/
 *.pickle
 *secret*.json
 scratchpad*.*
-tests/outputs/*
-!tests/outputs/.gitkeep
+tests/output/mock_batch/*.pdf
+tests/output/real.en_batch/*.pdf
+tests/docx_samples/test_input/mock_tests/mock_demo_*.docx
+tests/docx_samples/test_input/real_tests/real_demo_*.docx
