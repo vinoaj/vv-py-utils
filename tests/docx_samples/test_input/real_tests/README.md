@@ -2,7 +2,7 @@
 
 This directory contains real DOCX files used for testing the DOCX to PDF conversion functionality with Microsoft Word.
 
-## Important Notes:
+## Important Notes
 
 - Tests in this directory will be **skipped** if Microsoft Word is not available on the system
 - Test files are created here automatically if they don't exist
