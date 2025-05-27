@@ -22,7 +22,7 @@ class DuckUtils(BaseModel):
     )
 
     _PROMPT_PREFIX: ClassVar[str] = (
-        "You have access to the following tables. If you require any data from them, provide the SQL query to extract the data."
+        "You have access to the following DuckDB tables. If you require any data from them, provide the SQL query to extract the data."
     )
 
     # SQL query templates for metadata retrieval
