@@ -27,12 +27,10 @@ pdfs = [
     "pypdf<6.0.0,>=5.1.0",
     "pytesseract<1.0.0,>=0.3.13",
 ]
+pydantic-ai = ["pydantic-ai>=0.2.15"]
 
 [dependency-groups]
-dev = [
-    "pytest>=8.3.3,<9.0.0",
-    "devtools<1.0.0,>=0.12.2",
-]
+dev = ["pytest>=8.3.3,<9.0.0", "devtools<1.0.0,>=0.12.2"]
 
 [project.scripts]
 tests = "pytest:main"

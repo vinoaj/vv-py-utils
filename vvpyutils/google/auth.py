@@ -2,7 +2,6 @@ import pickle
 from datetime import datetime
 from enum import Enum
 from pathlib import Path
-from typing import Optional
 
 from google.auth.transport.requests import Request
 from google.oauth2.credentials import Credentials
@@ -50,7 +49,7 @@ class Scopes:
 class GoogleAuthState(BaseModel):
     """Internal state of the auth manager"""
 
-    last_refresh: Optional[datetime] = Field(
+    last_refresh: datetime | None = Field(
         default=None, description="Last time the credentials were refreshed"
     )
     active_services: dict[str, datetime] = Field(
@@ -80,7 +79,7 @@ class GoogleAuthManager(BaseModel):
 
     # State tracking
     state: GoogleAuthState = Field(default_factory=GoogleAuthState)
-    creds: Optional[Credentials] = None
+    creds: Credentials | None = None
 
     model_config = ConfigDict(arbitrary_types_allowed=True)
 
@@ -131,6 +130,33 @@ class GoogleAuthManager(BaseModel):
             "active_services": self.state.active_services,
             "scopes": self.scopes,
         }
+
+
+# TODO: Imported from agentsynthpanel. Figure out where to integrate this.
+
+from pathlib import Path
+
+from google.oauth2.service_account import Credentials
+from pydantic import BaseModel
+
+DEFAULT_SCOPES = ["https://www.googleapis.com/auth/cloud-platform"]
+
+
+class GoogleAuthHelper(BaseModel):
+    @classmethod
+    def load_credentials(
+        cls, service_account_file_path: Path, scopes: list[str] = DEFAULT_SCOPES
+    ) -> Credentials:
+        """Load Google service account credentials from a file."""
+        if not service_account_file_path.exists():
+            raise FileNotFoundError(
+                f"Service account file not found: {service_account_file_path}"
+            )
+
+        return Credentials.from_service_account_file(
+            str(service_account_file_path),
+            scopes=scopes,
+        )
 
 
 if __name__ == "__main__":
