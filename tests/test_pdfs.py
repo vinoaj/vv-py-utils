@@ -1,12 +1,19 @@
 import base64
 import io
+import shutil
 from pathlib import Path
 
 import pytest
 from PIL import Image
 from pypdf import PdfReader
 
-from vvpyutils.pdfs import PDFOCRProcessor, base64_encode_pdf, get_page_texts
+import vvpyutils.pdfs as pdf_utils
+from vvpyutils.pdfs import (
+    PDFOCRProcessor,
+    base64_encode_pdf,
+    get_page_matches,
+    get_page_texts,
+)
 
 SAMPLE_PDFS_PATH = Path(__file__).parent / "pdf_samples"
 SAMPLE_PDFS = ["sample.pdf"]
@@ -109,6 +116,46 @@ def test_read_pages(sample_pdf_bytes):
     assert "Sample PDF" in page_texts[0]
 
 
+def test_get_page_matches(sample_pdf_bytes):
+    page_matches = get_page_matches(sample_pdf_bytes, r"Sample\s+PDF")
+
+    assert page_matches == [["Sample PDF"]]
+
+
+def test_get_page_texts_repairs_on_failure(monkeypatch, sample_pdf_bytes):
+    calls = []
+
+    def mock_extract(pdf_data, pages=None, extraction_mode="layout"):
+        calls.append(pdf_data)
+        if len(calls) == 1:
+            raise ValueError("broken PDF")
+        return ["repaired text"]
+
+    def mock_repair(pdf_data):
+        assert pdf_data == sample_pdf_bytes
+        return b"repaired PDF"
+
+    monkeypatch.setattr(pdf_utils, "_extract_page_texts_from_pdf_data", mock_extract)
+    monkeypatch.setattr(pdf_utils, "_repair_pdf_data", mock_repair)
+
+    assert get_page_texts(sample_pdf_bytes) == ["repaired text"]
+    assert calls == [sample_pdf_bytes, b"repaired PDF"]
+
+
+def test_get_page_texts_can_skip_repair(monkeypatch, sample_pdf_bytes):
+    def mock_extract(pdf_data, pages=None, extraction_mode="layout"):
+        raise ValueError("broken PDF")
+
+    def mock_repair(pdf_data):
+        raise AssertionError("repair should not be attempted")
+
+    monkeypatch.setattr(pdf_utils, "_extract_page_texts_from_pdf_data", mock_extract)
+    monkeypatch.setattr(pdf_utils, "_repair_pdf_data", mock_repair)
+
+    with pytest.raises(ValueError, match="broken PDF"):
+        get_page_texts(sample_pdf_bytes, repair_on_failure=False)
+
+
 def test_detect_orientation():
     """Test rotation detection functionality"""
     # Create a simple test case with PIL
@@ -129,6 +176,9 @@ def test_detect_orientation():
 
 def test_pdf_ocr_with_rotation_option():
     """Test PDF OCR processing with different rotation settings"""
+    if shutil.which("pdfinfo") is None or shutil.which("tesseract") is None:
+        pytest.skip("PDF OCR test requires Poppler pdfinfo and Tesseract")
+
     processor_with_rotation = PDFOCRProcessor(
         pdf_path=Path("tests/pdf_samples/sample.pdf"), auto_rotate=True
     )

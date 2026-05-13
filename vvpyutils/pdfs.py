@@ -1,8 +1,10 @@
 import base64
 import io
+import re
 import subprocess
+import tempfile
 from pathlib import Path
-from typing import List, Optional, Tuple, Union
+from typing import List, Optional, Pattern, Tuple, Union
 
 import pdf2image
 import pytesseract
@@ -18,6 +20,7 @@ def get_page_texts(
     pdf_file: Path | bytes,
     pages: Optional[list[int]] = None,
     extraction_mode: str = "layout",  # "layout" or "plain"
+    repair_on_failure: bool = True,
 ) -> list[str]:
     """
     Extracts text content from specified pages of a PDF file (path or in-memory bytes).
@@ -26,6 +29,7 @@ def get_page_texts(
         pdf_file (Union[Path, bytes]): The path to the PDF file or the bytes content of a PDF.
         pages (List[int], optional): A list of page numbers (0-indexed) to extract text from.
                                      If empty, text from all pages is extracted.
+        repair_on_failure (bool): If True, retry extraction after repairing the PDF with Ghostscript.
 
     Returns:
         List[str]: A list of text content from the selected PDF pages.
@@ -43,6 +47,59 @@ def get_page_texts(
     else:
         raise TypeError("pdf_file must be either a Path or bytes")
 
+    try:
+        return _extract_page_texts_from_pdf_data(
+            pdf_data=pdf_data, pages=pages, extraction_mode=extraction_mode
+        )
+    except Exception as exc:
+        if not repair_on_failure:
+            raise
+
+        logger.warning(f"Failed to extract PDF text; attempting repair: {exc}")
+        repaired_pdf_data = _repair_pdf_data(pdf_data)
+        return _extract_page_texts_from_pdf_data(
+            pdf_data=repaired_pdf_data, pages=pages, extraction_mode=extraction_mode
+        )
+
+
+def get_page_matches(
+    pdf_file: Path | bytes,
+    regex: str | Pattern[str],
+    pages: Optional[list[int]] = None,
+    flags: int = re.MULTILINE | re.S,
+    extraction_mode: str = "layout",
+    repair_on_failure: bool = True,
+) -> list[list[str] | list[tuple[str, ...]]]:
+    """
+    Extracts text from PDF pages and returns regex matches for each selected page.
+
+    Args:
+        pdf_file (Union[Path, bytes]): The path to the PDF file or the bytes content of a PDF.
+        regex (str | Pattern[str]): Regex pattern to match against each page's text.
+        pages (List[int], optional): A list of page numbers (0-indexed) to search.
+                                     If empty, all pages are searched.
+        flags (int): Flags used when compiling a string regex.
+        extraction_mode (str): pypdf extraction mode ("layout" or "plain").
+        repair_on_failure (bool): If True, retry extraction after repairing the PDF with Ghostscript.
+
+    Returns:
+        List[List[str] | List[Tuple[str, ...]]]: Regex matches per selected page, in page order.
+    """
+    pattern = re.compile(regex, flags) if isinstance(regex, str) else regex
+    page_texts = get_page_texts(
+        pdf_file=pdf_file,
+        pages=pages,
+        extraction_mode=extraction_mode,
+        repair_on_failure=repair_on_failure,
+    )
+    return [pattern.findall(page_text or "") for page_text in page_texts]
+
+
+def _extract_page_texts_from_pdf_data(
+    pdf_data: bytes,
+    pages: Optional[list[int]] = None,
+    extraction_mode: str = "layout",
+) -> list[str]:
     # If specific pages are specified, create a new PDF with only those pages
     if pages and len(pages) > 0:
         pdf_reader = PdfReader(io.BytesIO(pdf_data))
@@ -63,6 +120,29 @@ def get_page_texts(
     return [
         page.extract_text(extraction_mode=extraction_mode) for page in pdf_reader.pages
     ]
+
+
+def _repair_pdf_data(pdf_data: bytes) -> bytes:
+    with tempfile.TemporaryDirectory() as temp_dir:
+        input_path = Path(temp_dir) / "input.pdf"
+        output_path = Path(temp_dir) / "repaired.pdf"
+        input_path.write_bytes(pdf_data)
+
+        subprocess.run(
+            [
+                "gs",
+                "-o",
+                str(output_path),
+                "-sDEVICE=pdfwrite",
+                "-dPDFSETTINGS=/prepress",
+                str(input_path),
+            ],
+            check=True,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+        )
+
+        return output_path.read_bytes()
 
 
 def is_scanned_pdf(
